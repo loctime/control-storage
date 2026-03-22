@@ -1,0 +1,49 @@
+{
+  "currency": "USD",
+  "billingInterval": "monthly",
+  "intervals": ["monthly", "yearly"],
+  "free": {
+    "planId": "FREE_5GB",
+    "name": "Gratis",
+    "quotaBytes": 5368709120,
+    "price": 0,
+    "yearlyPrice": 0
+  },
+  "plans": [
+    {
+      "planId": "STORAGE_50GB",
+      "name": "50 GB",
+      "quotaBytes": 53687091200,
+      "price": 0.99,
+      "yearlyPrice": 9.99
+    },
+    {
+      "planId": "STORAGE_100GB",
+      "name": "100 GB",
+      "quotaBytes": 107374182400,
+      "price": 1.99,
+      "yearlyPrice": 19.49
+    },
+    {
+      "planId": "STORAGE_250GB",
+      "name": "250 GB",
+      "quotaBytes": 268435456000,
+      "price": 3.99,
+      "yearlyPrice": 38.99
+    },
+    {
+      "planId": "STORAGE_500GB",
+      "name": "500 GB",
+      "quotaBytes": 536870912000,
+      "price": 6.99,
+      "yearlyPrice": 67.9
+    },
+    {
+      "planId": "STORAGE_1TB",
+      "name": "1 TB",
+      "quotaBytes": 1099511627776,
+      "price": 12.99,
+      "yearlyPrice": 125
+    }
+  ]
+}
