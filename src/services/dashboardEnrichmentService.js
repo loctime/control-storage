@@ -369,6 +369,158 @@ function generateDateRange(period, dateParam) {
 }
 
 /**
+ * Agrega datos de múltiples días en un único resultado
+ * @param {Array} results - Array de resultados de getDashboardSummaryEnriched() (uno por cada día)
+ * @returns {Object} Datos agregados de todos los días
+ */
+function aggregateDashboardResults(results) {
+  if (!results || results.length === 0) {
+    return {
+      ok: false,
+      error: "No results to aggregate",
+    };
+  }
+
+  // Trackers para agregación
+  const vehicleMap = {}; // plate -> vehicle data
+  const uniquePlates = new Set();
+  const uniquePlatesWithEvents = new Set();
+  let totalEvents = 0;
+  let totalCriticos = 0;
+  let totalAdministrativos = 0;
+  const distributionTotals = {
+    excesos: 0,
+    no_identificados: 0,
+    contactos: 0,
+    llave_sin_cargar: 0,
+    conductor_inactivo: 0,
+  };
+  let maxRisk = 0;
+  let riskSum = 0;
+  let riskCount = 0;
+  const allEvents = [];
+
+  // Iterar sobre cada día y agregar datos
+  for (const result of results) {
+    if (!result.ok) continue;
+
+    // Agregar eventos
+    totalEvents += result.summary?.totalEvents ?? 0;
+    totalCriticos += result.summary?.criticalEvents ?? 0;
+    totalAdministrativos += result.summary?.adminEvents ?? 0;
+
+    // Agregar distribution
+    Object.keys(distributionTotals).forEach((key) => {
+      distributionTotals[key] += result.distribution?.[key] ?? 0;
+    });
+
+    // Agregar vehículos únicos (merge por placa, guardar con máximo riesgo)
+    (result.vehicles || []).forEach((v) => {
+      uniquePlates.add(v.plate);
+      const currentRisk = v.riskScore ?? 0;
+      if (currentRisk > 0) {
+        uniquePlatesWithEvents.add(v.plate);
+        riskSum += currentRisk;
+        riskCount += 1;
+        if (currentRisk > maxRisk) maxRisk = currentRisk;
+      }
+      // Guardar vehículo si no existe o tiene riesgo mayor
+      if (!vehicleMap[v.plate] || (v.riskScore ?? 0) > (vehicleMap[v.plate].riskScore ?? 0)) {
+        vehicleMap[v.plate] = v;
+      }
+    });
+
+    // Agregar eventos recientes
+    (result.recentEvents || []).forEach((e) => {
+      allEvents.push(e);
+    });
+  }
+
+  // Calcular promedio de riesgo
+  const avgRisk = riskCount > 0 ? Math.round((riskSum / riskCount) * 10) / 10 : 0;
+
+  // Obtener lista de vehículos agregados
+  const allVehicles = Object.values(vehicleMap);
+
+  // Generar topVehicles (top 10 por riesgo)
+  const topVehicles = [...allVehicles]
+    .filter((v) => (v.riskScore ?? 0) > 0)
+    .sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0))
+    .slice(0, 10)
+    .map((v) => ({
+      plate: v.plate,
+      riskScore: v.riskScore ?? 0,
+      totalEvents: Array.isArray(v.events) ? v.events.length : 0,
+      operationName: v.operationName ?? v.operacion ?? null,
+      responsables: Array.isArray(v.responsables) ? v.responsables : [],
+    }));
+
+  // Generar criticalAlerts (riesgo >= 5)
+  const criticalAlerts = allVehicles
+    .filter((v) => (v.riskScore ?? 0) >= 5)
+    .map((v) => ({
+      plate: v.plate,
+      riskScore: v.riskScore ?? 0,
+      totalEvents: Array.isArray(v.events) ? v.events.length : 0,
+      operationName: v.operationName ?? v.operacion ?? null,
+      responsables: Array.isArray(v.responsables) ? v.responsables : [],
+    }));
+
+  // Generar riskMap
+  const riskMap = allVehicles
+    .filter((v) => (v.riskScore ?? 0) > 0)
+    .map((v) => ({
+      plate: v.plate,
+      risk: v.riskScore ?? 0,
+    }));
+
+  // Ordenar eventos por timestamp descendente y tomar últimos 50
+  allEvents.sort((a, b) => {
+    const ta = a.eventTimestamp || "";
+    const tb = b.eventTimestamp || "";
+    return tb.localeCompare(ta);
+  });
+  const recentEvents = allEvents.slice(0, 50);
+
+  // Calcular stats de enriquecimiento (agregado de todos)
+  let enrichmentTotal = 0;
+  let enrichmentSucceeded = 0;
+  let enrichmentFailed = 0;
+  for (const result of results) {
+    if (result.enrichmentStats) {
+      enrichmentTotal += result.enrichmentStats.total ?? 0;
+      enrichmentSucceeded += result.enrichmentStats.succeeded ?? 0;
+      enrichmentFailed += result.enrichmentStats.failed ?? 0;
+    }
+  }
+
+  return {
+    ok: true,
+    date: results[0]?.date,
+    summary: {
+      totalVehicles: uniquePlates.size,
+      vehiclesWithEvents: uniquePlatesWithEvents.size,
+      totalEvents,
+      criticalEvents: totalCriticos,
+      adminEvents: totalAdministrativos,
+      maxRisk,
+      avgRisk,
+    },
+    distribution: distributionTotals,
+    topVehicles,
+    criticalAlerts,
+    riskMap,
+    recentEvents,
+    vehicles: allVehicles,
+    enrichmentStats: {
+      total: enrichmentTotal,
+      succeeded: enrichmentSucceeded,
+      failed: enrichmentFailed,
+    },
+  };
+}
+
+/**
  * Obtiene resumen enriquecido por período
  * @param {string} period - "day" | "week" | "month" | "year"
  * @param {string} dateParam - Fecha en formato apropiado
@@ -403,21 +555,42 @@ async function getDashboardByPeriod(period, dateParam, options = {}) {
     return getDashboardSummaryEnriched(dates[0], options);
   }
 
-  // Para week, month, year: agregar dailyBreakdown
-  const firstDate = dates[0];
-  const result = await getDashboardSummaryEnriched(firstDate, options);
+  // Para week, month, year: iterar sobre todos los días y agregar
+  const allResults = [];
+  for (const dateKey of dates) {
+    try {
+      const dayResult = await getDashboardSummaryEnriched(dateKey, options);
+      if (dayResult.ok) {
+        allResults.push(dayResult);
+      }
+    } catch (err) {
+      // Ignorar errores de días sin datos
+      console.error(`[dashboard] Error fetching data for ${dateKey}:`, err.message);
+    }
+  }
 
-  if (!result.ok) {
-    return result;
+  if (allResults.length === 0) {
+    return {
+      ok: false,
+      error: `No data available for period ${period}`,
+    };
+  }
+
+  // Agregar todos los resultados
+  const aggregated = aggregateDashboardResults(allResults);
+
+  if (!aggregated.ok) {
+    return aggregated;
   }
 
   // Calcular dailyBreakdown para el período
   const dailyBreakdown = await calculateDailyBreakdown(dates);
 
-  // Agregar dailyBreakdown al response
+  // Retornar respuesta con datos agregados
   return {
-    ...result,
+    ...aggregated,
     dailyBreakdown,
+    period,
   };
 }
 
@@ -430,4 +603,5 @@ module.exports = {
   getDailyStats,
   calculateDailyBreakdown,
   generateDateRange,
+  aggregateDashboardResults,
 };
