@@ -210,6 +210,8 @@ router.get("/summary", async (req, res) => {
  * date: YYYY-MM-DD para day/week, YYYY-MM para month, YYYY para year
  */
 router.get("/enriched", async (req, res) => {
+  console.log("[AUDIT-BACK] GET /api/dashboard/enriched query.period =", req.query.period);
+  console.log("[AUDIT-BACK] GET /api/dashboard/enriched query.date =", req.query.date);
   try {
     const period = (req.query.period || "day").toLowerCase();
     let dateParam = req.query.date;
@@ -219,6 +221,22 @@ router.get("/enriched", async (req, res) => {
       const lastDate = await getLastDateWithData();
       dateParam = lastDate;
       if (!dateParam) {
+        const dailyBreakdown = period !== "day" ? [] : null;
+        const vehicleDetails = [];
+        console.log(
+          "[AUDIT-BACK] GET /api/dashboard/enriched pre-response dailyBreakdown =",
+          dailyBreakdown === null
+            ? "null"
+            : dailyBreakdown === undefined
+              ? "undefined"
+              : Array.isArray(dailyBreakdown)
+                ? `array(length=${dailyBreakdown.length})`
+                : typeof dailyBreakdown
+        );
+        console.log(
+          "[AUDIT-BACK] GET /api/dashboard/enriched pre-response vehicleDetails length =",
+          vehicleDetails.length
+        );
         return res.status(200).json({
           ok: true,
           period: period,
@@ -243,9 +261,9 @@ router.get("/enriched", async (req, res) => {
           topVehicles: [],
           recentEvents: [],
           riskMap: [],
-          vehicleDetails: [],
+          vehicleDetails: vehicleDetails,
           enrichmentStats: { total: 0, succeeded: 0, failed: 0 },
-          dailyBreakdown: period !== "day" ? [] : null,
+          dailyBreakdown: dailyBreakdown,
           message: "No hay datos disponibles para ningún día",
         });
       }
@@ -276,6 +294,21 @@ router.get("/enriched", async (req, res) => {
       enrichmentStats: result.enrichmentStats,
       dailyBreakdownSize: Array.isArray(result.dailyBreakdown) ? result.dailyBreakdown.length : null,
     });
+
+    console.log(
+      "[AUDIT-BACK] GET /api/dashboard/enriched pre-response dailyBreakdown =",
+      result.dailyBreakdown === null
+        ? "null"
+        : result.dailyBreakdown === undefined
+          ? "undefined"
+          : Array.isArray(result.dailyBreakdown)
+            ? `array(length=${result.dailyBreakdown.length})`
+            : typeof result.dailyBreakdown
+    );
+    console.log(
+      "[AUDIT-BACK] GET /api/dashboard/enriched pre-response vehicleDetails length =",
+      vehicleDetails.length
+    );
 
     return res.status(200).json({
       ok: true,
