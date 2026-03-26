@@ -30,6 +30,15 @@ const {
 } = require('../services/contract-metrics');
 const { isEnabled } = require('../services/contract-feature-flags');
 
+const crypto = require('crypto');
+
+function deterministic_folder_id(userId, parentId, slug) {
+  const input = parentId
+    ? `sub|${userId}|${parentId}|${slug}`
+    : `root|${userId}|${slug}`;
+  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 32);
+}
+
 // ⚠️ LEGACY FIELD: metadata.source
 // Este campo NO tiene valor contractual según CONTRACT.md v1
 // No define UX, no define jerarquía, no debe ser usado por apps
@@ -170,14 +179,14 @@ router.post('/create', invalidateCache('create'), async (req, res) => {
     //   }
     // }
 
-    // Generate folder ID or use provided one
-    const folderId = id && typeof id === 'string' && id.trim().length > 0
-      ? id
-      : `main-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
     // Generate slug
     const baseSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
     let slug = baseSlug;
+
+    // Generate folder ID or use provided one
+    const folderId = id && typeof id === 'string' && id.trim().length > 0
+      ? id
+      : deterministic_folder_id(uid, isRootFolder ? null : parentId, baseSlug);
     
     // Check for slug uniqueness within the same parent
     const filesCol = admin.firestore().collection('files');
@@ -209,38 +218,45 @@ router.post('/create', invalidateCache('create'), async (req, res) => {
 
     // Create folder in Firestore
     const folderRef = admin.firestore().collection('files').doc(folderId);
-    await folderRef.set({
-      id: folderId,
-      userId: uid,
-      name: name.trim(),
-      slug: slug,
-      parentId: parentId || null,
-      path: path,
-      ancestors,
-      createdAt: new Date(),
-      modifiedAt: new Date(),
-      type: 'folder',
-      metadata: {
-        isMainFolder: !parentId,
-        isDefault: false,
-        icon: icon || 'Folder',
-        color: color || 'text-purple-600',
-        description: description || '',
-        tags: Array.isArray(tags) ? tags : [],
-        isPublic: Boolean(isPublic),
-        viewCount: 0,
-        lastAccessedAt: new Date(),
-        permissions: {
-          canEdit: true,
-          canDelete: true,
-          canShare: true,
-          canDownload: true
-        },
-        customFields: customFields || {},
-        // ⚠️ LEGACY FIELD: metadata.source no tiene valor contractual
-        source: validateAndNormalizeSource(source)
-      }
-    });
+    const existingDoc = await folderRef.get();
+    if (!existingDoc.exists) {
+      await folderRef.set({
+        id: folderId,
+        userId: uid,
+        name: name.trim(),
+        slug: slug,
+        parentId: parentId || null,
+        path: path,
+        ancestors,
+        createdAt: new Date(),
+        modifiedAt: new Date(),
+        type: 'folder',
+        metadata: {
+          isMainFolder: !parentId,
+          isDefault: false,
+          icon: icon || 'Folder',
+          color: color || 'text-purple-600',
+          description: description || '',
+          tags: Array.isArray(tags) ? tags : [],
+          isPublic: Boolean(isPublic),
+          viewCount: 0,
+          lastAccessedAt: new Date(),
+          permissions: {
+            canEdit: true,
+            canDelete: true,
+            canShare: true,
+            canDownload: true
+          },
+          customFields: customFields || {},
+          // ⚠️ LEGACY FIELD: metadata.source no tiene valor contractual
+          source: validateAndNormalizeSource(source)
+        }
+      });
+    } else {
+      const existingData = existingDoc.data() || {};
+      if (existingData.slug) slug = existingData.slug;
+      if (existingData.path) path = existingData.path;
+    }
 
     // 🔍 SOFT ENFORCEMENT: Actualizar métricas con folderId real después de crear
     if (isEnabled('CONTRACT_SOFT_ENFORCEMENT_ENABLED')) {
@@ -413,9 +429,9 @@ async function ensureRootFolder(uid, name, req = null) {
   }
 
   // Crear si no existe (reutiliza lógica de /root)
-  const generatedId = `main-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  const folderRef = filesCol.doc(generatedId);
   const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+  const generatedId = deterministic_folder_id(uid, null, slug);
+  const folderRef = filesCol.doc(generatedId);
   const path = `/${slug}`;
   
   const doc = {
@@ -450,6 +466,12 @@ async function ensureRootFolder(uid, name, req = null) {
       // Las carpetas creadas por ensureRootFolder son para navbar (ControlFile UI)
     },
   };
+
+  const existingDoc = await folderRef.get();
+  if (existingDoc.exists) {
+    const existingData = existingDoc.data() || {};
+    return { folderId: existingDoc.id, folderData: existingData };
+  }
 
   await folderRef.set(doc);
   
@@ -520,7 +542,7 @@ async function ensureFolderBySlug(uid, slug, parentId, req = null) {
   }
 
   // Crear si no existe (reutiliza lógica de /create)
-  const folderId = `main-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const folderId = deterministic_folder_id(uid, parentId, slug);
   
   // Calcular path y ancestors
   let path = `/${slug}`;
@@ -534,6 +556,13 @@ async function ensureFolderBySlug(uid, slug, parentId, req = null) {
   }
 
   const folderRef = filesCol.doc(folderId);
+
+  const existingDoc = await folderRef.get();
+  if (existingDoc.exists) {
+    const existingData = existingDoc.data() || {};
+    return { folderId: existingDoc.id, folderData: existingData };
+  }
+
   await folderRef.set({
     id: folderId,
     userId: uid,
@@ -819,10 +848,9 @@ router.get('/root', async (req, res) => {
       folderData = d.data();
     } else {
       // Crear si no existe
-      const generatedId = `main-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const folderRef = filesCol.doc(generatedId);
-
       const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+      const generatedId = deterministic_folder_id(uid, null, slug);
+      const folderRef = filesCol.doc(generatedId);
       const path = `/${slug}`;
       const doc = {
         id: generatedId,
@@ -855,9 +883,15 @@ router.get('/root', async (req, res) => {
         },
       };
 
-      await folderRef.set(doc);
-      folderId = generatedId;
-      folderData = doc;
+      const existingDoc = await folderRef.get();
+      if (!existingDoc.exists) {
+        await folderRef.set(doc);
+        folderId = generatedId;
+        folderData = doc;
+      } else {
+        folderId = existingDoc.id;
+        folderData = existingDoc.data();
+      }
     }
 
     // 🔍 SOFT ENFORCEMENT: Registrar métricas después de crear carpeta
