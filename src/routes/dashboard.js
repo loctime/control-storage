@@ -269,17 +269,12 @@ router.get("/enriched", async (req, res) => {
       _dataSource: v._dataSource,
     }));
 
-    // Determinar dailyBreakdown
-    let dailyBreakdown = null;
-    if (period !== "day") {
-      dailyBreakdown = result.dailyBreakdown || [];
-    }
-
     logger.debug("[dashboard/enriched] OK", {
       period,
       date: dateParam,
       totalVehicles: result.summary.totalVehicles,
       enrichmentStats: result.enrichmentStats,
+      dailyBreakdownSize: Array.isArray(result.dailyBreakdown) ? result.dailyBreakdown.length : null,
     });
 
     return res.status(200).json({
@@ -294,7 +289,7 @@ router.get("/enriched", async (req, res) => {
       riskMap: result.riskMap,
       vehicleDetails: vehicleDetails,
       enrichmentStats: result.enrichmentStats,
-      dailyBreakdown: dailyBreakdown,
+      dailyBreakdown: result.dailyBreakdown,
     });
   } catch (err) {
     logger.error("[dashboard/enriched] Error", { error: err.message });

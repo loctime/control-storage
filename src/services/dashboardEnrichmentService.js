@@ -550,9 +550,16 @@ async function getDashboardByPeriod(period, dateParam, options = {}) {
     };
   }
 
-  // Para day, usar la implementación existente
+  // Calcular dailyBreakdown para TODOS los períodos (lo hacemos primero)
+  const dailyBreakdown = await calculateDailyBreakdown(dates);
+
+  // Para day, usar la implementación existente pero agregar dailyBreakdown=null
   if (period === "day") {
-    return getDashboardSummaryEnriched(dates[0], options);
+    const dayResult = await getDashboardSummaryEnriched(dates[0], options);
+    return {
+      ...dayResult,
+      dailyBreakdown: null, // Para day, dailyBreakdown es null
+    };
   }
 
   // Para week, month, year: iterar sobre todos los días y agregar
@@ -583,13 +590,10 @@ async function getDashboardByPeriod(period, dateParam, options = {}) {
     return aggregated;
   }
 
-  // Calcular dailyBreakdown para el período
-  const dailyBreakdown = await calculateDailyBreakdown(dates);
-
-  // Retornar respuesta con datos agregados
+  // Retornar respuesta con datos agregados y dailyBreakdown
   return {
     ...aggregated,
-    dailyBreakdown,
+    dailyBreakdown, // Para week/month/year, agregar el array de breakdown
     period,
   };
 }
