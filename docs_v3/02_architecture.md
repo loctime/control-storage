@@ -73,6 +73,7 @@ This allows the frontend and backend to be deployed independently while sharing 
 | `POST /api/folders/create` | `POST {BACKEND_URL}/v1/folders/create` |
 | `GET /api/folders/root` | `GET {BACKEND_URL}/v1/folders/root` |
 | `POST /api/folders/set-main` | `POST {BACKEND_URL}/v1/folders/set-main` |
+| `POST /api/folders/resolve` | `POST {BACKEND_URL}/v1/folders/resolve` |
 | `POST /api/folders/permanent-delete` | `POST {BACKEND_URL}/v1/folders/permanent-delete` |
 | `GET /api/folders/by-slug/{u}/{path}` | `GET {BACKEND_URL}/v1/folders/by-slug/{u}/{path}` |
 | `POST /api/shares/create` | `POST {BACKEND_URL}/v1/shares/create` |

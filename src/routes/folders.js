@@ -1089,4 +1089,131 @@ router.post('/set-main', invalidateCache('update'), async (req, res) => {
     return res.status(500).json({ error: 'Error interno del servidor' });
   }
 });
+
+router.post('/resolve', async (req, res) => {
+  try {
+    const { uid } = req.user;
+    const { appId, contextType, contextEventId, companyId, sucursalId, tipoArchivo } = req.body;
+
+    // Validaciones mínimas
+    if (!appId || typeof appId !== 'string') {
+      return res.status(400).json({ error: 'appId es requerido' });
+    }
+    if (!contextType || typeof contextType !== 'string') {
+      return res.status(400).json({ error: 'contextType es requerido' });
+    }
+
+    const { ensureAppRootFolder } = require('../services/contract-validators');
+
+    // Función interna para crear/obtener subcarpeta con ID determinístico
+    // (reutiliza la misma lógica que ensureFolderBySlug pero sin el helper legacy)
+    async function resolveFolder(name, parentId) {
+      const nameStr = (name ?? '').toString();
+
+      const slug = nameStr.toLowerCase().trim()
+        .replace(/\s+/g, '-')
+        .replace(/[^\w-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      if (!slug) throw new Error(`Nombre de carpeta inválido: "${nameStr}"`);
+
+      const input = `sub|${uid}|${parentId}|${slug}`;
+      const folderId = crypto.createHash('sha256').update(input).digest('hex').slice(0, 32);
+
+      const filesCol = admin.firestore().collection('files');
+      const folderRef = filesCol.doc(folderId);
+      const existingDoc = await folderRef.get();
+
+      if (existingDoc.exists) {
+        return folderId;
+      }
+
+      // Calcular path y ancestors desde el parent
+      const parentDoc = await filesCol.doc(parentId).get();
+      const parentData = parentDoc.exists ? parentDoc.data() : null;
+      const path = parentData ? `${parentData.path}/${slug}` : `/${slug}`;
+      const ancestors = parentData
+        ? [...(Array.isArray(parentData.ancestors) ? parentData.ancestors : []), parentId]
+        : [parentId];
+
+      await folderRef.set({
+        id: folderId,
+        userId: uid,
+        appId: appId,
+        name: nameStr.trim(),
+        slug,
+        parentId,
+        path,
+        ancestors,
+        createdAt: new Date(),
+        modifiedAt: new Date(),
+        type: 'folder',
+        deletedAt: null,
+        metadata: {
+          isMainFolder: false,
+          isDefault: false,
+          icon: 'Folder',
+          color: 'text-purple-600',
+          description: '',
+          tags: [],
+          isPublic: false,
+          viewCount: 0,
+          lastAccessedAt: new Date(),
+          permissions: {
+            canEdit: true,
+            canDelete: true,
+            canShare: true,
+            canDownload: true
+          },
+          customFields: {}
+        }
+      });
+
+      return folderId;
+    }
+
+    // 1. Carpeta raíz de la app (determinística, idempotente)
+    const { folderId: appRootId } = await ensureAppRootFolder(uid, appId);
+
+    // 2. Navegar la jerarquía según contexto
+    let currentId = appRootId;
+
+    // Nivel: contextType (ej: "training_session", "auditoria")
+    currentId = await resolveFolder(contextType, currentId);
+
+    // Nivel: contextEventId (si viene)
+    if (contextEventId && String(contextEventId).trim()) {
+      currentId = await resolveFolder(contextEventId, currentId);
+    }
+
+    // Nivel: companyId (si viene)
+    if (companyId && String(companyId).trim()) {
+      currentId = await resolveFolder(companyId, currentId);
+    }
+
+    // Nivel: sucursalId (si viene)
+    if (sucursalId && String(sucursalId).trim()) {
+      currentId = await resolveFolder(sucursalId, currentId);
+    }
+
+    // Nivel: tipoArchivo (si viene)
+    if (tipoArchivo && String(tipoArchivo).trim()) {
+      currentId = await resolveFolder(tipoArchivo, currentId);
+    }
+
+    return res.json({
+      success: true,
+      folderId: currentId
+    });
+
+  } catch (error) {
+    logger.error('Error in POST /api/folders/resolve', {
+      error: error.message,
+      userId: req.user?.uid,
+      body: req.body
+    });
+    return res.status(500).json({ error: error.message || 'Error interno del servidor' });
+  }
+});
 module.exports = router;

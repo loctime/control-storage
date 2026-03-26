@@ -238,13 +238,58 @@ function validateTaskbarPin(req) {
  * @returns {Promise<Object>} { folderId: string, folderData: Object }
  */
 async function ensureAppRootFolder(uid, appId) {
-  // TODO: Implementar cuando se cree POST /api/apps/:appId/root
-  // 1. Buscar carpeta raíz de la app (marcada con metadata.appId)
-  // 2. Si no existe, crearla con parentId=null pero NO visible en navbar
-  // 3. Agregarla automáticamente a userSettings.taskbarItems
-  // 4. Retornar folderId
-  
-  throw new Error('ensureAppRootFolder not implemented yet');
+  const crypto = require('crypto');
+  const admin = require('../firebaseAdmin');
+
+  // ID determinístico para carpeta raíz de app
+  // Formato: approot|{uid}|{appId} hasheado
+  const input = `approot|${uid}|${appId}`;
+  const folderId = crypto.createHash('sha256').update(input).digest('hex').slice(0, 32);
+
+  const folderRef = admin.firestore().collection('files').doc(folderId);
+  const existingDoc = await folderRef.get();
+
+  if (existingDoc.exists) {
+    return { folderId, folderData: existingDoc.data() };
+  }
+
+  const slug = appId.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+  const doc = {
+    id: folderId,
+    userId: uid,
+    appId: appId,
+    name: appId,
+    slug: slug,
+    parentId: null,
+    path: `/${slug}`,
+    ancestors: [],
+    createdAt: new Date(),
+    modifiedAt: new Date(),
+    type: 'folder',
+    deletedAt: null,
+    metadata: {
+      isMainFolder: true,
+      isDefault: true,
+      isAppRoot: true,
+      icon: 'Folder',
+      color: 'text-blue-600',
+      description: '',
+      tags: [],
+      isPublic: false,
+      viewCount: 0,
+      lastAccessedAt: new Date(),
+      permissions: {
+        canEdit: true,
+        canDelete: false,
+        canShare: false,
+        canDownload: true
+      },
+      customFields: {}
+    }
+  };
+
+  await folderRef.set(doc);
+  return { folderId, folderData: doc };
 }
 
 /**
