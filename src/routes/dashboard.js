@@ -237,7 +237,7 @@ router.get("/enriched", async (req, res) => {
           "[AUDIT-BACK] GET /api/dashboard/enriched pre-response vehicleDetails length =",
           vehicleDetails.length
         );
-        return res.status(200).json({
+        const responseObject = {
           ok: true,
           period: period,
           date: null,
@@ -265,7 +265,9 @@ router.get("/enriched", async (req, res) => {
           enrichmentStats: { total: 0, succeeded: 0, failed: 0 },
           dailyBreakdown: dailyBreakdown,
           message: "No hay datos disponibles para ningún día",
-        });
+        };
+        console.log("[AUDIT-BACK] keys enviados:", Object.keys(responseObject));
+        return res.status(200).json(responseObject);
       }
     }
 
@@ -310,20 +312,22 @@ router.get("/enriched", async (req, res) => {
       vehicleDetails.length
     );
 
-    return res.status(200).json({
+    const responseObject = {
       ok: true,
       period: period,
       date: result.date,
       summary: result.summary,
-      distribution: result.distribution,
+      distribution: result.distribution ?? null,
       criticalAlerts: result.criticalAlerts,
       topVehicles: result.topVehicles,
       recentEvents: result.recentEvents,
       riskMap: result.riskMap,
       vehicleDetails: vehicleDetails,
       enrichmentStats: result.enrichmentStats,
-      dailyBreakdown: result.dailyBreakdown,
-    });
+      dailyBreakdown: result.dailyBreakdown ?? null,
+    };
+    console.log("[AUDIT-BACK] keys enviados:", Object.keys(responseObject));
+    return res.status(200).json(responseObject);
   } catch (err) {
     logger.error("[dashboard/enriched] Error", { error: err.message });
     return res.status(500).json({
