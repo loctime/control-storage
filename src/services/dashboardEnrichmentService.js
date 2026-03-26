@@ -250,9 +250,184 @@ async function getEnrichedVehicle(plate, dateKey = null) {
   return enrichVehicle(vehicle);
 }
 
+/**
+ * Obtiene stats diarios para una fecha específica
+ * @param {string} dateKey - YYYY-MM-DD
+ * @returns {Promise<{totalExcessEvents: number, avgRisk: number}>}
+ */
+async function getDailyStats(dateKey) {
+  const [metaSnap, vehiclesSnap] = await Promise.all([
+    DAILY_ALERTS_REF().doc(dateKey).collection("meta").doc("meta").get(),
+    DAILY_ALERTS_REF().doc(dateKey).collection("vehicles").get(),
+  ]);
+
+  const meta = metaSnap.exists ? metaSnap.data() : {};
+  const vehicles = vehiclesSnap.docs.map((d) => ({ ...d.data() }));
+
+  const totalExcessEvents = meta.totalExcesos ?? 0;
+
+  let riskSum = 0;
+  let riskCount = 0;
+  for (const v of vehicles) {
+    const r = typeof v.riskScore === "number" ? v.riskScore : 0;
+    if (r > 0) {
+      riskSum += r;
+      riskCount += 1;
+    }
+  }
+  const avgRisk = riskCount > 0 ? Math.round((riskSum / riskCount) * 10) / 10 : 0;
+
+  return {
+    totalExcessEvents,
+    avgRisk,
+  };
+}
+
+/**
+ * Calcula dailyBreakdown para un rango de fechas
+ * @param {string[]} dates - Array de fechas en formato YYYY-MM-DD
+ * @returns {Promise<Array>} Array de {date, totalExcessEvents, avgRisk}
+ */
+async function calculateDailyBreakdown(dates) {
+  const breakdown = [];
+
+  for (const dateKey of dates) {
+    try {
+      const stats = await getDailyStats(dateKey);
+      breakdown.push({
+        date: dateKey,
+        totalExcessEvents: stats.totalExcessEvents,
+        avgRisk: stats.avgRisk,
+      });
+    } catch (err) {
+      // Si no hay datos para esa fecha, agregar con valores por defecto
+      breakdown.push({
+        date: dateKey,
+        totalExcessEvents: 0,
+        avgRisk: 0,
+      });
+    }
+  }
+
+  return breakdown;
+}
+
+/**
+ * Genera array de fechas para un período
+ * @param {string} period - "day" | "week" | "month" | "year"
+ * @param {string} dateParam - Fecha en formato YYYY-MM-DD (day/week), YYYY-MM (month), o YYYY (year)
+ * @returns {string[]} Array de fechas YYYY-MM-DD
+ */
+function generateDateRange(period, dateParam) {
+  const dates = [];
+
+  if (period === "day") {
+    // Solo un día
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      dates.push(dateParam);
+    }
+  } else if (period === "week") {
+    // 7 días a partir de la fecha indicada
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      const [y, m, d] = dateParam.split("-").map(Number);
+      const startDate = new Date(y, m - 1, d);
+      for (let i = 0; i < 7; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(currentDate.getDate() + i);
+        const yyyy = currentDate.getFullYear();
+        const mm = String(currentDate.getMonth() + 1).padStart(2, "0");
+        const dd = String(currentDate.getDate()).padStart(2, "0");
+        dates.push(`${yyyy}-${mm}-${dd}`);
+      }
+    }
+  } else if (period === "month") {
+    // Todos los días del mes
+    if (/^\d{4}-\d{2}$/.test(dateParam)) {
+      const [y, m] = dateParam.split("-").map(Number);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dd = String(d).padStart(2, "0");
+        dates.push(`${y}-${String(m).padStart(2, "0")}-${dd}`);
+      }
+    }
+  } else if (period === "year") {
+    // Todos los días del año
+    if (/^\d{4}$/.test(dateParam)) {
+      const y = Number(dateParam);
+      const isLeapYear = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+      const daysInYear = isLeapYear ? 366 : 365;
+      for (let dayOfYear = 1; dayOfYear <= daysInYear; dayOfYear++) {
+        const date = new Date(y, 0, dayOfYear);
+        const mm = String(date.getMonth() + 1).padStart(2, "0");
+        const dd = String(date.getDate()).padStart(2, "0");
+        dates.push(`${y}-${mm}-${dd}`);
+      }
+    }
+  }
+
+  return dates;
+}
+
+/**
+ * Obtiene resumen enriquecido por período
+ * @param {string} period - "day" | "week" | "month" | "year"
+ * @param {string} dateParam - Fecha en formato apropiado
+ * @param {object} options - { maxConcurrency: 10 }
+ * @returns {Promise<object>}
+ */
+async function getDashboardByPeriod(period, dateParam, options = {}) {
+  const validPeriods = ["day", "week", "month", "year"];
+  if (!validPeriods.includes(period)) {
+    return {
+      ok: false,
+      error: `Invalid period. Must be one of: ${validPeriods.join(", ")}`,
+    };
+  }
+
+  const dates = generateDateRange(period, dateParam);
+  if (dates.length === 0) {
+    return {
+      ok: false,
+      error: `Invalid date format for period ${period}`,
+      examples: {
+        day: "date=YYYY-MM-DD",
+        week: "date=YYYY-MM-DD",
+        month: "date=YYYY-MM",
+        year: "date=YYYY",
+      },
+    };
+  }
+
+  // Para day, usar la implementación existente
+  if (period === "day") {
+    return getDashboardSummaryEnriched(dates[0], options);
+  }
+
+  // Para week, month, year: agregar dailyBreakdown
+  const firstDate = dates[0];
+  const result = await getDashboardSummaryEnriched(firstDate, options);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  // Calcular dailyBreakdown para el período
+  const dailyBreakdown = await calculateDailyBreakdown(dates);
+
+  // Agregar dailyBreakdown al response
+  return {
+    ...result,
+    dailyBreakdown,
+  };
+}
+
 module.exports = {
   getDashboardSummaryEnriched,
+  getDashboardByPeriod,
   enrichVehicle,
   getVehicleData,
   getEnrichedVehicle,
+  getDailyStats,
+  calculateDailyBreakdown,
+  generateDateRange,
 };
