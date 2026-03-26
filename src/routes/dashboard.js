@@ -2,13 +2,18 @@
  * GET /api/dashboard/summary
  * Resumen agregado para el dashboard de monitoreo de flota.
  * Lee desde apps/emails/dailyAlerts/{date}/meta/meta y vehicles.
- * No modifica endpoints existentes de dashboard.routes.js.
+ * GET /api/dashboard/enriched
+ * Resumen enriquecido con datos de apps/emails/vehicles para cada vehículo.
+ * GET /api/dashboard/audit?date=YYYY-MM-DD
+ * Auditoría de inconsistencias entre dailyAlerts y vehicles.
  */
 
 const express = require("express");
 const router = express.Router();
 const admin = require("../firebaseAdmin");
 const { logger } = require("../utils/logger");
+const { auditDashboardData } = require("../services/dashboardAuditService");
+const { getDashboardSummaryEnriched } = require("../services/dashboardEnrichmentService");
 
 const db = admin.firestore();
 const DAILY_ALERTS_REF = () =>
@@ -190,6 +195,140 @@ router.get("/summary", async (req, res) => {
     });
   } catch (err) {
     logger.error("[dashboard/summary] Error", { error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: "error interno",
+      message: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+});
+
+/**
+ * GET /enriched?date=YYYY-MM-DD
+ * Resumen enriquecido: lee dailyAlerts/{date}/vehicles y enriquece con datos de apps/emails/vehicles/{plate}.
+ * El frontend hace 1 request, datos correctos desde el backend.
+ */
+router.get("/enriched", async (req, res) => {
+  try {
+    let dateKey = parseDateKey(req.query.date);
+    if (!dateKey) {
+      dateKey = await getLastDateWithData();
+      if (!dateKey) {
+        return res.status(200).json({
+          ok: true,
+          date: null,
+          summary: {
+            totalVehicles: 0,
+            vehiclesWithEvents: 0,
+            totalEvents: 0,
+            criticalEvents: 0,
+            adminEvents: 0,
+            maxRisk: 0,
+            avgRisk: 0,
+          },
+          distribution: {
+            excesos: 0,
+            no_identificados: 0,
+            contactos: 0,
+            llave_sin_cargar: 0,
+            conductor_inactivo: 0,
+          },
+          criticalAlerts: [],
+          topVehicles: [],
+          recentEvents: [],
+          riskMap: [],
+          enrichmentStats: { total: 0, succeeded: 0, failed: 0 },
+          message: "No hay datos disponibles para ningún día",
+        });
+      }
+    }
+
+    const result = await getDashboardSummaryEnriched(dateKey, { maxConcurrency: 10 });
+
+    if (!result.ok) {
+      return res.status(400).json(result);
+    }
+
+    logger.debug("[dashboard/enriched] OK", {
+      dateKey,
+      totalVehicles: result.summary.totalVehicles,
+      enrichmentStats: result.enrichmentStats,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      date: dateKey,
+      summary: result.summary,
+      distribution: result.distribution,
+      criticalAlerts: result.criticalAlerts,
+      topVehicles: result.topVehicles,
+      recentEvents: result.recentEvents,
+      riskMap: result.riskMap,
+      enrichmentStats: result.enrichmentStats,
+    });
+  } catch (err) {
+    logger.error("[dashboard/enriched] Error", { error: err.message });
+    return res.status(500).json({
+      ok: false,
+      error: "error interno",
+      message: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+});
+
+/**
+ * GET /audit?date=YYYY-MM-DD
+ * Auditoría de datos del dashboard.
+ * Devuelve inconsistencias entre dailyAlerts (legacy) y apps/emails/vehicles (correcto).
+ * Respuesta:
+ * {
+ *   "date": "2026-03-25",
+ *   "totalVehicles": 150,
+ *   "vehiclesWithOperacion": 145,
+ *   "vehiclesWithoutOperacion": 5,
+ *   "vehiclesWithValidResponsables": 140,
+ *   "vehiclesWithLegacyResponsables": 10,
+ *   "legacyEmailsFound": ["controldoc@controldoc.app", ...],
+ *   "mismatches": [
+ *     {
+ *       "plate": "ABC123",
+ *       "operacionFromDailyAlerts": "Operacion A",
+ *       "operacionFromVehicles": "Operacion B",
+ *       "match": false
+ *     }
+ *   ],
+ *   "summary": "X vehicles have inconsistencies..."
+ * }
+ */
+router.get("/audit", async (req, res) => {
+  try {
+    const dateKey = parseDateKey(req.query.date);
+    if (!dateKey) {
+      return res.status(400).json({
+        error: "Query date requerido en formato YYYY-MM-DD",
+        example: "?date=2026-03-25",
+      });
+    }
+
+    const auditResult = await auditDashboardData(dateKey);
+
+    if (!auditResult.ok) {
+      return res.status(400).json(auditResult);
+    }
+
+    logger.info("[dashboard/audit] Audit completed", {
+      dateKey,
+      totalVehicles: auditResult.totalVehicles,
+      mismatchesFound: auditResult.mismatches.length,
+      legacyEmailsCount: auditResult.legacyEmailsFound.length,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      ...auditResult,
+    });
+  } catch (err) {
+    logger.error("[dashboard/audit] Error", { error: err.message });
     return res.status(500).json({
       ok: false,
       error: "error interno",
