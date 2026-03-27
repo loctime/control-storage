@@ -51,12 +51,18 @@ function toIncidentCount(incident) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
-function parseKeyNumber(raw) {
-  if (raw == null || raw === "Sin llave asignada") return null;
+function parseKeyInfo(raw) {
+  if (raw == null) {
+    return { keyNumber: null, keyLabel: "Sin llave asignada" };
+  }
   const text = String(raw).trim();
-  // Soporta formatos: "llave 5", "llave_5", "llave-5", "5"
+  if (!text || text.toLowerCase() === "sin llave asignada") {
+    return { keyNumber: null, keyLabel: "Sin llave asignada" };
+  }
   const match = text.match(/llave[\s_-]*(\d+)/i) || text.match(/^(\d+)$/);
-  return match ? Number(match[1]) : null;
+  const keyNumber = match ? Number(match[1]) : null;
+  const keyLabel = keyNumber !== null ? `Llave ${keyNumber}` : `Llave ${text}`;
+  return { keyNumber, keyLabel };
 }
 
 function buildEventLookups(events) {
@@ -133,12 +139,11 @@ function buildTopDriversKeysByVehicle(vehicle) {
   return Array.from(grouped.entries())
     .map(([compositeKey, excessCount]) => {
       const [driverName, keyId] = compositeKey.split("__");
-      const keyNumber = parseKeyNumber(keyId);
-      const keyLabel = keyNumber !== null ? `Llave ${keyNumber}` : "Sin llave asignada";
+      const keyInfo = parseKeyInfo(keyId);
       return {
         driverName,
-        keyNumber,
-        keyLabel,
+        keyNumber: keyInfo.keyNumber,
+        keyLabel: keyInfo.keyLabel,
         plate,
         excesos: excessCount,
       };
@@ -160,10 +165,11 @@ function buildTopDriversKeysByOperation(vehicleDetails) {
 
     for (const item of items) {
       const driverName = normalizeDriverName(item?.driverName);
-      const keyNumber = item?.keyNumber ?? parseKeyNumber(item?.keyId);
-      const keyLabel = keyNumber != null ? `Llave ${keyNumber}` : "Sin llave asignada";
+      const keyInfo = item?.keyLabel
+        ? { keyNumber: item?.keyNumber ?? null, keyLabel: String(item.keyLabel) }
+        : parseKeyInfo(item?.keyId);
       const plate = item?.plate || detail?.plate || null;
-      const compositeKey = `${driverName}__${String(keyNumber)}__${keyLabel}__${plate}`;
+      const compositeKey = `${driverName}__${String(keyInfo.keyNumber)}__${keyInfo.keyLabel}__${plate}`;
       const prev = grouped.get(compositeKey) || 0;
       grouped.set(compositeKey, prev + (Number(item?.excesos ?? item?.excessCount) || 0));
     }
