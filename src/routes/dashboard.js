@@ -59,14 +59,72 @@ function parseKeyNumber(raw) {
   return match ? Number(match[1]) : null;
 }
 
+function buildEventLookups(events) {
+  const incidentLookup = new Map();
+  const eventLookup = new Map();
+  const safeEvents = Array.isArray(events) ? events : [];
+
+  for (const event of safeEvents) {
+    const eventId = event?.eventId;
+    if (eventId != null && !eventLookup.has(String(eventId))) {
+      eventLookup.set(String(eventId), event);
+    }
+
+    const upsertIncident = (incidentRef) => {
+      if (incidentRef == null) return;
+      const key = String(incidentRef);
+      const prev = incidentLookup.get(key) || {};
+      incidentLookup.set(key, {
+        keyId: prev.keyId ?? event?.keyId ?? null,
+        driverName: prev.driverName ?? event?.driverName ?? null,
+      });
+    };
+
+    upsertIncident(event?.incidentKey);
+    upsertIncident(event?.groupedSpeedIncidentKey);
+  }
+
+  return { incidentLookup, eventLookup };
+}
+
+function resolveIncidentFields(incident, lookups) {
+  let keyId = incident?.keyId ?? null;
+  let driverName = incident?.driverName ?? null;
+  const incidentRefs = [incident?.groupedSpeedIncidentKey, incident?.incidentKey].filter(Boolean);
+
+  for (const ref of incidentRefs) {
+    const match = lookups.incidentLookup.get(String(ref));
+    if (!match) continue;
+    if (keyId == null && match.keyId != null) keyId = match.keyId;
+    if (driverName == null && match.driverName != null) driverName = match.driverName;
+    if (keyId != null && driverName != null) break;
+  }
+
+  if (keyId == null || driverName == null) {
+    const incidentEventIds = Array.isArray(incident?.eventIds) ? incident.eventIds : [];
+    for (const eventId of incidentEventIds) {
+      const event = lookups.eventLookup.get(String(eventId));
+      if (!event) continue;
+      if (keyId == null && event?.keyId != null) keyId = event.keyId;
+      if (driverName == null && event?.driverName != null) driverName = event.driverName;
+      if (keyId != null && driverName != null) break;
+    }
+  }
+
+  return { keyId, driverName };
+}
+
 function buildTopDriversKeysByVehicle(vehicle) {
   const speedIncidents = Array.isArray(vehicle?.speedIncidents) ? vehicle.speedIncidents : [];
   const grouped = new Map();
   const plate = vehicle?.plate || vehicle?.id || null;
+  const eventLookups = buildEventLookups(vehicle?.events);
 
   for (const incident of speedIncidents) {
-    const driverName = normalizeDriverName(incident?.driverName);
-    const keyId = normalizeKeyId(incident?.keyId);
+    const resolved = resolveIncidentFields(incident, eventLookups);
+    const driverName = normalizeDriverName(resolved.driverName);
+    const resolvedKeyId = resolved.keyId;
+    const keyId = normalizeKeyId(resolvedKeyId);
     const compositeKey = `${driverName}__${keyId}`;
     const current = grouped.get(compositeKey) || 0;
     grouped.set(compositeKey, current + toIncidentCount(incident));
