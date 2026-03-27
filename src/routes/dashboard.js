@@ -385,6 +385,7 @@ router.get("/enriched", async (req, res) => {
       maxSpeed: v.maxSpeed ?? null,
       topSpeedEvent: v.topSpeedEvent ?? null,
       speedingDrivers: Array.isArray(v.speedingDrivers) ? v.speedingDrivers : [],
+      speedIncidents: Array.isArray(v.speedIncidents) ? v.speedIncidents : [],
       topDriversKeys: buildTopDriversKeysByVehicle(v),
       llave_sin_cargar: v.llave_sin_cargar ?? 0,
       no_identificados: v.no_identificados ?? 0,
