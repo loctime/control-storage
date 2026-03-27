@@ -51,6 +51,14 @@ function toIncidentCount(incident) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
+function parseKeyNumber(raw) {
+  if (raw == null || raw === "Sin llave asignada") return null;
+  const text = String(raw).trim();
+  // Soporta formatos: "llave 5", "llave_5", "llave-5", "5"
+  const match = text.match(/llave[\s_-]*(\d+)/i) || text.match(/^(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
 function buildTopDriversKeysByVehicle(vehicle) {
   const speedIncidents = Array.isArray(vehicle?.speedIncidents) ? vehicle.speedIncidents : [];
   const grouped = new Map();
@@ -67,14 +75,17 @@ function buildTopDriversKeysByVehicle(vehicle) {
   return Array.from(grouped.entries())
     .map(([compositeKey, excessCount]) => {
       const [driverName, keyId] = compositeKey.split("__");
+      const keyNumber = parseKeyNumber(keyId);
+      const keyLabel = keyNumber !== null ? `Llave ${keyNumber}` : "Sin llave asignada";
       return {
         driverName,
-        keyId,
-        excessCount,
+        keyNumber,
+        keyLabel,
         plate,
+        excesos: excessCount,
       };
     })
-    .sort((a, b) => b.excessCount - a.excessCount)
+    .sort((a, b) => b.excesos - a.excesos)
     .slice(0, 5);
 }
 
@@ -91,11 +102,12 @@ function buildTopDriversKeysByOperation(vehicleDetails) {
 
     for (const item of items) {
       const driverName = normalizeDriverName(item?.driverName);
-      const keyId = normalizeKeyId(item?.keyId);
+      const keyNumber = item?.keyNumber ?? parseKeyNumber(item?.keyId);
+      const keyLabel = keyNumber != null ? `Llave ${keyNumber}` : "Sin llave asignada";
       const plate = item?.plate || detail?.plate || null;
-      const compositeKey = `${driverName}__${keyId}__${plate}`;
+      const compositeKey = `${driverName}__${String(keyNumber)}__${keyLabel}__${plate}`;
       const prev = grouped.get(compositeKey) || 0;
-      grouped.set(compositeKey, prev + (Number(item?.excessCount) || 0));
+      grouped.set(compositeKey, prev + (Number(item?.excesos ?? item?.excessCount) || 0));
     }
   }
 
@@ -103,13 +115,11 @@ function buildTopDriversKeysByOperation(vehicleDetails) {
     operationName: operation,
     topDriversKeys: Array.from(grouped.entries())
       .map(([compositeKey, excessCount]) => {
-        const [driverName, keyId, plate] = compositeKey.split("__");
-        const keyText = String(keyId ?? "");
-        const match = keyText.match(/llave\s*(\d+)/i);
-        const keyNumber = match ? Number(match[1]) : null;
+        const [driverName, keyNumberRaw, keyLabel, plate] = compositeKey.split("__");
+        const keyNumber = keyNumberRaw === "null" ? null : Number(keyNumberRaw);
         return {
           keyNumber,
-          keyLabel: keyNumber != null ? `Llave ${keyNumber}` : "Sin llave asignada",
+          keyLabel,
           driverName: driverName ?? "—",
           plate: plate ?? null,
           excesos: Number(excessCount) || 0,
