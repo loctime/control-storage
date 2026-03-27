@@ -37,6 +37,85 @@ function parseDateKey(queryDate) {
   return trimmed;
 }
 
+function normalizeDriverName(driverName) {
+  return driverName == null ? "—" : String(driverName);
+}
+
+function normalizeKeyId(keyId) {
+  return keyId == null ? "Sin llave asignada" : String(keyId);
+}
+
+function toIncidentCount(incident) {
+  const raw = incident?.groupedEventsCount;
+  const parsed = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function buildTopDriversKeysByVehicle(vehicle) {
+  const speedIncidents = Array.isArray(vehicle?.speedIncidents) ? vehicle.speedIncidents : [];
+  const grouped = new Map();
+  const plate = vehicle?.plate || vehicle?.id || null;
+
+  for (const incident of speedIncidents) {
+    const driverName = normalizeDriverName(incident?.driverName);
+    const keyId = normalizeKeyId(incident?.keyId);
+    const compositeKey = `${driverName}__${keyId}`;
+    const current = grouped.get(compositeKey) || 0;
+    grouped.set(compositeKey, current + toIncidentCount(incident));
+  }
+
+  return Array.from(grouped.entries())
+    .map(([compositeKey, excessCount]) => {
+      const [driverName, keyId] = compositeKey.split("__");
+      return {
+        driverName,
+        keyId,
+        excessCount,
+        plate,
+      };
+    })
+    .sort((a, b) => b.excessCount - a.excessCount)
+    .slice(0, 5);
+}
+
+function buildTopDriversKeysByOperation(vehicleDetails) {
+  const operationMap = new Map();
+
+  for (const detail of vehicleDetails) {
+    const operation = detail?.operacion || "Sin operación";
+    if (!operationMap.has(operation)) {
+      operationMap.set(operation, new Map());
+    }
+    const grouped = operationMap.get(operation);
+    const items = Array.isArray(detail?.topDriversKeys) ? detail.topDriversKeys : [];
+
+    for (const item of items) {
+      const driverName = normalizeDriverName(item?.driverName);
+      const keyId = normalizeKeyId(item?.keyId);
+      const plate = item?.plate || detail?.plate || null;
+      const compositeKey = `${driverName}__${keyId}__${plate}`;
+      const prev = grouped.get(compositeKey) || 0;
+      grouped.set(compositeKey, prev + (Number(item?.excessCount) || 0));
+    }
+  }
+
+  return Array.from(operationMap.entries()).map(([operation, grouped]) => ({
+    operation,
+    topDriversKeys: Array.from(grouped.entries())
+      .map(([compositeKey, excessCount]) => {
+        const [driverName, keyId, plate] = compositeKey.split("__");
+        return {
+          driverName,
+          keyId,
+          excessCount,
+          plate,
+        };
+      })
+      .sort((a, b) => b.excessCount - a.excessCount)
+      .slice(0, 3),
+  }));
+}
+
 /**
  * Obtiene el último día con datos en dailyAlerts (por ID de documento YYYY-MM-DD).
  */
@@ -223,6 +302,7 @@ router.get("/enriched", async (req, res) => {
       if (!dateParam) {
         const dailyBreakdown = period !== "day" ? [] : null;
         const vehicleDetails = [];
+        const topDriversKeysByOperation = [];
         console.log(
           "[AUDIT-BACK] GET /api/dashboard/enriched pre-response dailyBreakdown =",
           dailyBreakdown === null
@@ -262,6 +342,7 @@ router.get("/enriched", async (req, res) => {
           recentEvents: [],
           riskMap: [],
           vehicleDetails: vehicleDetails,
+          topDriversKeysByOperation: topDriversKeysByOperation,
           enrichmentStats: { total: 0, succeeded: 0, failed: 0 },
           dailyBreakdown: dailyBreakdown,
           message: "No hay datos disponibles para ningún día",
@@ -290,6 +371,7 @@ router.get("/enriched", async (req, res) => {
       maxSpeed: v.maxSpeed ?? null,
       topSpeedEvent: v.topSpeedEvent ?? null,
       speedingDrivers: Array.isArray(v.speedingDrivers) ? v.speedingDrivers : [],
+      topDriversKeys: buildTopDriversKeysByVehicle(v),
       llave_sin_cargar: v.llave_sin_cargar ?? 0,
       no_identificados: v.no_identificados ?? 0,
       contactos: v.contactos ?? 0,
@@ -298,6 +380,7 @@ router.get("/enriched", async (req, res) => {
       _enrichedFrom: v._enrichedFrom,
       _dataSource: v._dataSource,
     }));
+    const topDriversKeysByOperation = buildTopDriversKeysByOperation(vehicleDetails);
 
     logger.debug("[dashboard/enriched] OK", {
       period,
@@ -333,6 +416,7 @@ router.get("/enriched", async (req, res) => {
       recentEvents: result.recentEvents,
       riskMap: result.riskMap,
       vehicleDetails: vehicleDetails,
+      topDriversKeysByOperation: topDriversKeysByOperation,
       enrichmentStats: result.enrichmentStats,
       dailyBreakdown: result.dailyBreakdown ?? null,
     };
