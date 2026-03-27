@@ -6,6 +6,7 @@
 
 const crypto = require("crypto");
 const admin = require("../firebaseAdmin");
+const { isSpeedExcessEvent, normalizeEventTypeForSummary } = require("../shared/eventClassification");
 
 const MAX_BATCH_SIZE = 500;
 const MAX_DAILY_EVENTS_STORED = Math.max(
@@ -67,14 +68,6 @@ function buildIncidentKey(plate, dateKey, eventSubtype) {
   const normalizedPlate = normalizePlate(plate);
   const subtype = eventSubtype || EVENT_SUBTYPE_DRIVER_NOT_IDENTIFIED;
   return `${normalizedPlate}_${dateKey}_${subtype}`;
-}
-
-function isSpeedingEvent(event) {
-  return (
-    event?.eventCategory === EVENT_CATEGORY_SPEEDING ||
-    event?.eventSubtype === EVENT_SUBTYPE_SPEED_EXCESS ||
-    (event?.type === "exceso" && typeof event?.speed === "number")
-  );
 }
 
 function normalizeLocationForIncident(location) {
@@ -146,7 +139,7 @@ function getSpeedSeverity(maxSpeed) {
 function groupSpeedingIncidents(events) {
   if (!isRsvV2SpeedGroupingEnabled()) return [];
   const speeding = (Array.isArray(events) ? events : [])
-    .filter((e) => isSpeedingEvent(e) && typeof e.speed === "number")
+    .filter((e) => isSpeedExcessEvent(e) && typeof e.speed === "number")
     .map((e) => ({
       ...e,
       __ts: toEpochMs(e.eventTimestamp),
@@ -229,7 +222,7 @@ function computeIncidentSummary(events) {
   const seenIncidentKeys = new Set();
   const speedIncidents = groupSpeedingIncidents(events);
   for (const event of Array.isArray(events) ? events : []) {
-    if (isSpeedingEvent(event)) continue;
+    if (isSpeedExcessEvent(event)) continue;
     const subtype = event.eventSubtype || resolveSubtypeFromLegacyType(event.type);
     const dateKey = resolveDateKeyFromTimestamp(event.eventTimestamp);
     const incidentKey = event.incidentKey || buildIncidentKey(event.plate || "", dateKey, subtype);
@@ -395,7 +388,7 @@ async function saveVehicleEvents(events, messageId, source) {
 
     const docRef = baseRef.doc(eventId);
     const dateKey = resolveDateKeyFromTimestamp(event.eventTimestamp);
-    const isSpeeding = isSpeedingEvent(event);
+    const isSpeeding = isSpeedExcessEvent(event);
     const eventSubtype = event.eventSubtype || resolveSubtypeFromLegacyType(event.type);
     const incidentKey = event.incidentKey || (
       isSpeeding
@@ -591,8 +584,7 @@ async function updateDailyMeta(dateKey, eventSummary, opts) {
     .doc("meta");
 
   const FieldValue = admin.firestore.FieldValue;
-  const eventType = eventSummary.type || "exceso";
-  const summaryKey = normalizeEventTypeForSummary(eventType);
+  const summaryKey = normalizeEventTypeForSummary(eventSummary);
   const metaTypeField = getMetaFieldForType(summaryKey);
 
   const update = {
@@ -621,29 +613,6 @@ const SUMMARY_EVENT_TYPES = new Set([
   "llave_sin_cargar",
   "conductor_inactivo",
 ]);
-
-/**
- * Normaliza el tipo de evento para el summary.
- * Mapea tipos específicos a claves del summary (siempre uno de los 5 tipos).
- * @param {string} eventType - Tipo de evento original
- * @returns {string} Clave para el summary
- */
-function normalizeEventTypeForSummary(eventType) {
-  const typeMap = {
-    exceso: "excesos",
-    no_identificado: "no_identificados",
-    contacto: "contactos",
-    llave_no_registrada: "llave_sin_cargar",
-    sin_llave: "llave_sin_cargar",
-    conductor_inactivo: "conductor_inactivo",
-    CONTACT_NO_DRIVER: "contactos",
-    DRIVER_NOT_IDENTIFIED: "no_identificados",
-    UNKNOWN_KEY: "llave_sin_cargar",
-    INACTIVE_DRIVER: "conductor_inactivo",
-    SPEED_EXCESS: "excesos",
-  };
-  return typeMap[eventType] || "no_identificados";
-}
 
 /**
  * Nombre del campo en meta del día para totales por tipo.
@@ -716,14 +685,14 @@ const ALLOWED_EVENT_TYPES = new Set([
 function buildEventSummary(event) {
   let eventType = event.type || "exceso";
   if (!ALLOWED_EVENT_TYPES.has(eventType)) {
-    eventType = isSpeedingEvent(event) ? "exceso" : "no_identificado";
+    eventType = isSpeedExcessEvent(event) ? "exceso" : "no_identificado";
   }
   const severity = event.severity || "critico";
   const speedVal = event.speed;
   const dateKey = resolveDateKeyFromTimestamp(event.eventTimestamp);
   const eventSubtype = event.eventSubtype || resolveSubtypeFromLegacyType(eventType);
   const incidentKey = event.incidentKey || (
-    isSpeedingEvent(event)
+    isSpeedExcessEvent(event)
       ? buildSpeedIncidentBaseKey(event)
       : buildIncidentKey(event.plate, dateKey, eventSubtype)
   );
@@ -740,14 +709,14 @@ function buildEventSummary(event) {
     rawEventType: event.rawEventType || null,
     sourceEmailType: event.sourceEmailType || null,
     eventSource: event.eventSource || EVENT_SOURCE_RSV,
-    eventCategory: event.eventCategory || (isSpeedingEvent(event) ? EVENT_CATEGORY_SPEEDING : EVENT_CATEGORY_DRIVER_IDENTIFICATION),
+    eventCategory: event.eventCategory || (isSpeedExcessEvent(event) ? EVENT_CATEGORY_SPEEDING : EVENT_CATEGORY_DRIVER_IDENTIFICATION),
     eventSubtype,
     incidentKey,
     timestampSource: event.timestampSource || "EMAIL_EVENT",
     speed: typeof speedVal === "number" ? speedVal : null,
     speedLimit: event.speedLimit ?? null,
     speedDelta: event.speedDelta ?? null,
-    groupedEventsCount: event.groupedEventsCount ?? (isSpeedingEvent(event) ? 1 : null),
+    groupedEventsCount: event.groupedEventsCount ?? (isSpeedExcessEvent(event) ? 1 : null),
     maxSpeed: event.maxSpeed ?? (typeof speedVal === "number" ? speedVal : null),
     hasSpeed: typeof speedVal === "number",
     eventTimestamp: event.eventTimestamp || "",
@@ -1026,7 +995,7 @@ function buildDailyAlertVehicleProjection({
 
   for (const eventSummary of newSummaries) {
     mergedEvents.push(eventSummary);
-    const key = normalizeEventTypeForSummary(eventSummary.type);
+    const key = normalizeEventTypeForSummary(eventSummary);
     summaryCounts[key] = (summaryCounts[key] || 0) + 1;
   }
 
