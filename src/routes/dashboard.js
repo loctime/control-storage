@@ -510,10 +510,7 @@
       // Construir vehicleDetails a partir de los vehículos enriquecidos
       const vehicleDetails = (result.vehicles || []).map((v) => ({
         plate: v.plate,
-        excesos: (() => {
-          const speedCount = Array.isArray(v.events) ? v.events.filter(isSpeedExcessEvent).length : 0;
-          return speedCount > 0 ? speedCount : (v.summary?.excesos ?? 0);
-        })(),
+        excesos: v.summary?.excesos ?? 0,
         operacion: v.operacion || v.operationName || null,
         riskScore: v.riskScore ?? 0,
         responsable: v.responsable ?? null,
