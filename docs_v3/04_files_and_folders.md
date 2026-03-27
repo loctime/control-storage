@@ -68,6 +68,13 @@ A document with `type: "folder"` represents a virtual folder container.
 | `modifiedAt` | Timestamp | Last update time (`updatedAt` also accepted by code) |
 | `deletedAt` | Timestamp\|null | `null` = active. Non-null = soft-deleted |
 
+### Optional Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `appId` | string | Owning app identifier (e.g. `"controlaudit"`). Present on folders created via `/resolve`. |
+| `metadata.isAppRoot` | boolean | `true` only on each app’s root folder (`parentId: null`). Created by `ensureAppRootFolder()`. |
+
 ---
 
 ## Hierarchy Model
@@ -93,6 +100,8 @@ For `fileC`, the document looks like:
 ```
 
 **App integration note:** Apps request their assigned root folder via `GET /api/folders/root`. They can create subfolders within it. Apps cannot create root-level folders (`parentId: null`) — only ControlFile system creates those.
+
+> **App folder hierarchy:** Las apps que usan `POST /api/folders/resolve` generan una jerarquía semántica bajo su carpeta raíz (`metadata.isAppRoot: true`). Los IDs de todos los nodos son determinísticos (SHA-256 del contexto), lo que garantiza idempotencia total sin race conditions. Los valores enviados como `contextEventId`, `companyId` y `sucursalId` se usan directamente como nombres de carpeta — deben ser nombres legibles, nunca IDs internos.
 
 ---
 

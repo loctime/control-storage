@@ -8,6 +8,8 @@ node_modules/
 
 # Claves y credenciales (Firebase / Google Cloud / similares)
 serviceAccountKey*.json
+serviceAccount.json
+scripts/serviceAccount.json
 *-firebase-adminsdk-*.json
 firebase-adminsdk*.json
 *.pem

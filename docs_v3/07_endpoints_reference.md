@@ -500,6 +500,71 @@ Create a new folder.
 
 ---
 
+### POST /api/folders/resolve
+
+Resolves (and creates if missing) the full folder hierarchy for an app’s semantic context. Idempotent — repeated calls with the same body return the same `folderId`.
+
+**Auth:** Required  
+**Backend:** `POST /v1/folders/resolve`
+
+**Request:**
+```json
+{
+  "appId": "controlaudit",
+  "contextType": "training_session",
+  "contextEventId": "Uso de Matafuegos - Marzo 2026",
+  "companyId": "Empresa ABC",
+  "sucursalId": "Casa Central",
+  "tipoArchivo": "evidencia_capacitacion"
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `appId` | Yes | Application identifier (e.g. `"controlaudit"`) |
+| `contextType` | Yes | Context type (e.g. `"training_session"`, `"auditoria"`) |
+| `contextEventId` | No | Human-readable event name |
+| `companyId` | No | Human-readable company name |
+| `sucursalId` | No | Human-readable branch name |
+| `tipoArchivo` | No | File type bucket (e.g. `"evidencia_capacitacion"`) |
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "folderId": "carpetaDestinoId"
+}
+```
+
+**Hierarchy created:**
+
+```
+{appId}/
+  {contextType}/
+    {contextEventId}/     (if sent)
+      {companyId}/        (if sent)
+        {sucursalId}/     (if sent)
+          {tipoArchivo}/  (if sent)
+```
+
+**Notes:**
+- All levels use deterministic IDs (SHA-256 from context). Concurrent calls converge on the same documents.
+- `contextEventId`, `companyId`, and `sucursalId` must be **human-readable names**, never opaque internal IDs — the backend uses them directly as folder names.
+- The app root folder (`appId`) is created with `metadata.isAppRoot: true`.
+- Subfolders include `appId` on the document.
+- Use the returned `folderId` as `parentId` in `POST /api/uploads/presign`.
+
+**Errors:** `400` missing `appId` or `contextType` · `401` · `500`
+
+**Recommended flow:**
+
+`POST /api/folders/resolve` → `folderId`  
+`POST /api/uploads/presign` → `uploadSessionId` (with `parentId` = `folderId`)  
+Direct `PUT` to B2 → physical upload  
+`POST /api/uploads/confirm` → `fileId`
+
+---
+
 ### GET /api/folders/root
 
 Get or create the user's root folder. Idempotent.
