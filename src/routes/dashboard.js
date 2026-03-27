@@ -103,7 +103,11 @@
       event.eventCategory === "SPEEDING" ||
       event.eventSubtype === "SPEED_EXCESS" ||
       event.eventCategory === "exceso_velocidad" ||
-      event.type === "exceso"
+      event.type === "exceso" ||
+      // Eventos ya marcados como parte de un grupo de exceso (merge en vehicleEventService)
+      Boolean(event.groupedSpeedIncidentKey) ||
+      // Resumen persistido por buildEventSummary cuando hay velocidad medida
+      event.hasSpeed === true
     );
   }
 
@@ -141,6 +145,16 @@
     const grouped = new Map();
     const plate = vehicle?.plate || vehicle?.id || null;
     const speedEventCount = allEvents.reduce((n, e) => n + (isSpeedExcessEvent(e) ? 1 : 0), 0);
+
+    // TEMPORAL — quitar tras confirmar formato de eventos y activación de MODO A
+    if (allEvents.length > 0 && speedEventCount === 0) {
+      console.log(
+        "[DEBUG] MODO B forzado para",
+        vehicle?.plate,
+        "- sample event:",
+        JSON.stringify(allEvents[0]),
+      );
+    }
 
     // MODO A: eventos completos — 1 por evento de velocidad (sin doble conteo con speedIncidents)
     if (!eventsTruncated && speedEventCount > 0) {
@@ -496,7 +510,10 @@
       // Construir vehicleDetails a partir de los vehículos enriquecidos
       const vehicleDetails = (result.vehicles || []).map((v) => ({
         plate: v.plate,
-        excesos: Array.isArray(v.events) ? v.events.length : 0,
+        excesos: (() => {
+          const speedCount = Array.isArray(v.events) ? v.events.filter(isSpeedExcessEvent).length : 0;
+          return speedCount > 0 ? speedCount : (v.summary?.excesos ?? 0);
+        })(),
         operacion: v.operacion || v.operationName || null,
         riskScore: v.riskScore ?? 0,
         responsable: v.responsable ?? null,
