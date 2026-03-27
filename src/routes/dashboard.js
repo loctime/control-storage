@@ -136,50 +136,61 @@
 
   function buildTopDriversKeysByVehicle(vehicle) {
     const speedIncidents = Array.isArray(vehicle?.speedIncidents) ? vehicle.speedIncidents : [];
+    const allEvents = Array.isArray(vehicle?.events) ? vehicle.events : [];
+    const eventsTruncated = Boolean(vehicle?.eventsTruncated);
     const grouped = new Map();
     const plate = vehicle?.plate || vehicle?.id || null;
-    const eventLookups = buildEventLookups(vehicle?.events);
+    const speedEventCount = allEvents.reduce((n, e) => n + (isSpeedExcessEvent(e) ? 1 : 0), 0);
 
-    for (const incident of speedIncidents) {
-      const resolved = resolveIncidentFields(incident, eventLookups);
-      const driverName = normalizeDriverName(resolved.driverName);
-      const resolvedKeyId = resolved.keyId;
-      const keyId = normalizeKeyId(resolvedKeyId);
-      const compositeKey = `${driverName}__${keyId}`;
-      const current = grouped.get(compositeKey) || 0;
-      grouped.set(compositeKey, current + toIncidentCount(incident));
-    }
-
-    const processedEventIds = new Set();
-    const speedIncidentKeys = new Set();
-    for (const incident of speedIncidents) {
-      const ids = Array.isArray(incident?.eventIds) ? incident.eventIds : [];
-      for (const id of ids) {
-        if (id != null) processedEventIds.add(String(id));
+    // MODO A: eventos completos — 1 por evento de velocidad (sin doble conteo con speedIncidents)
+    if (!eventsTruncated && speedEventCount > 0) {
+      for (const event of allEvents) {
+        if (!isSpeedExcessEvent(event)) continue;
+        const driverName = normalizeDriverName(event?.driverName);
+        const keyId = normalizeKeyId(event?.keyId);
+        const compositeKey = `${driverName}__${keyId}`;
+        grouped.set(compositeKey, (grouped.get(compositeKey) || 0) + 1);
       }
-      if (incident?.incidentKey != null) {
-        speedIncidentKeys.add(String(incident.incidentKey));
+    } else {
+      // MODO B: eventos truncados o sin filas de velocidad en events — incidentes + huérfanos
+      const eventLookups = buildEventLookups(vehicle?.events);
+      for (const incident of speedIncidents) {
+        const resolved = resolveIncidentFields(incident, eventLookups);
+        const driverName = normalizeDriverName(resolved.driverName);
+        const keyId = normalizeKeyId(resolved.keyId);
+        const compositeKey = `${driverName}__${keyId}`;
+        grouped.set(compositeKey, (grouped.get(compositeKey) || 0) + toIncidentCount(incident));
       }
-    }
 
-    const allEvents = Array.isArray(vehicle?.events) ? vehicle.events : [];
-    for (const event of allEvents) {
-      if (!isSpeedExcessEvent(event)) continue;
+      const processedEventIds = new Set();
+      const speedIncidentKeys = new Set();
+      for (const incident of speedIncidents) {
+        const ids = Array.isArray(incident?.eventIds) ? incident.eventIds : [];
+        for (const id of ids) {
+          if (id != null) processedEventIds.add(String(id));
+        }
+        if (incident?.incidentKey != null) {
+          speedIncidentKeys.add(String(incident.incidentKey));
+        }
+      }
 
-      const eventId = event?.eventId;
-      if (eventId != null && processedEventIds.has(String(eventId))) continue;
+      for (const event of allEvents) {
+        if (!isSpeedExcessEvent(event)) continue;
 
-      const gKey = event?.groupedSpeedIncidentKey;
-      if (gKey != null && speedIncidentKeys.has(String(gKey))) continue;
+        const eventId = event?.eventId;
+        if (eventId != null && processedEventIds.has(String(eventId))) continue;
 
-      const incKey = event?.incidentKey;
-      if (incKey != null && speedIncidentKeys.has(String(incKey))) continue;
+        const gKey = event?.groupedSpeedIncidentKey;
+        if (gKey != null && speedIncidentKeys.has(String(gKey))) continue;
 
-      const driverName = normalizeDriverName(event?.driverName);
-      const keyId = normalizeKeyId(event?.keyId);
-      const compositeKey = `${driverName}__${keyId}`;
-      const current = grouped.get(compositeKey) || 0;
-      grouped.set(compositeKey, current + 1);
+        const incKey = event?.incidentKey;
+        if (incKey != null && speedIncidentKeys.has(String(incKey))) continue;
+
+        const driverName = normalizeDriverName(event?.driverName);
+        const keyId = normalizeKeyId(event?.keyId);
+        const compositeKey = `${driverName}__${keyId}`;
+        grouped.set(compositeKey, (grouped.get(compositeKey) || 0) + 1);
+      }
     }
 
     return Array.from(grouped.entries())
