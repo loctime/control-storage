@@ -14,6 +14,7 @@
   const { logger } = require("../utils/logger");
   const { auditDashboardData } = require("../services/dashboardAuditService");
   const { getDashboardSummaryEnriched, getDashboardByPeriod } = require("../services/dashboardEnrichmentService");
+  const { normalizePlate } = require("../services/vehicleEventService");
 
   const db = admin.firestore();
   const DAILY_ALERTS_REF = () =>
@@ -635,6 +636,107 @@
       });
     } catch (err) {
       logger.error("[dashboard/audit] Error", { error: err.message });
+      return res.status(500).json({
+        ok: false,
+        error: "error interno",
+        message: process.env.NODE_ENV === "development" ? err.message : undefined,
+      });
+    }
+  });
+
+  /**
+   * GET /audit-events?date=YYYY-MM-DD&plate=ABC123
+   * Auditoría temporal: compara eventos entre dailyAlerts (dashboard) y subcolección events del vehículo (historial).
+   */
+  router.get("/audit-events", async (req, res) => {
+    try {
+      const dateKey = parseDateKey(req.query.date);
+      const rawPlate = typeof req.query.plate === "string" ? req.query.plate.trim() : "";
+      if (!dateKey || !rawPlate) {
+        return res.status(400).json({
+          error: "Parámetros requeridos: date=YYYY-MM-DD, plate=ABC123",
+        });
+      }
+
+      const plate = normalizePlate(rawPlate);
+      if (!plate) {
+        return res.status(400).json({
+          error: "Patente inválida",
+        });
+      }
+
+      const dailyDoc = await db
+        .collection("apps")
+        .doc("emails")
+        .collection("dailyAlerts")
+        .doc(dateKey)
+        .collection("vehicles")
+        .doc(plate)
+        .get();
+
+      const dailyData = dailyDoc.exists ? dailyDoc.data() : null;
+      const dailyEvents = Array.isArray(dailyData?.events) ? dailyData.events : [];
+      const dailySpeedIncidents = Array.isArray(dailyData?.speedIncidents) ? dailyData.speedIncidents : [];
+
+      const vehicleEventsSnap = await db
+        .collection("apps")
+        .doc("emails")
+        .collection("vehicles")
+        .doc(plate)
+        .collection("events")
+        .where("eventTimestamp", ">=", `${dateKey}T00:00:00`)
+        .where("eventTimestamp", "<=", `${dateKey}T23:59:59`)
+        .get();
+
+      const vehicleEvents = vehicleEventsSnap.docs.map((d) => d.data());
+
+      const dailyFiltered = dailyEvents.filter(isSpeedExcessEvent);
+      const vehicleFiltered = vehicleEvents.filter(isSpeedExcessEvent);
+
+      const dailyIds = new Set(dailyFiltered.map((e) => e.eventId).filter(Boolean));
+      const vehicleIds = new Set(vehicleFiltered.map((e) => e.eventId).filter(Boolean));
+
+      const onlyInDaily = dailyFiltered.filter((e) => e.eventId && !vehicleIds.has(e.eventId));
+      const onlyInVehicle = vehicleFiltered.filter((e) => e.eventId && !dailyIds.has(e.eventId));
+      const inBoth = dailyFiltered.filter((e) => e.eventId && vehicleIds.has(e.eventId));
+
+      return res.status(200).json({
+        ok: true,
+        date: dateKey,
+        plate,
+        summary: {
+          dailyEventsTotal: dailyEvents.length,
+          dailySpeedIncidents: dailySpeedIncidents.length,
+          dailyFilteredByFunction: dailyFiltered.length,
+          vehicleEventsTotal: vehicleEvents.length,
+          vehicleFilteredByFunction: vehicleFiltered.length,
+          inBoth: inBoth.length,
+          onlyInDaily: onlyInDaily.length,
+          onlyInVehicle: onlyInVehicle.length,
+        },
+        details: {
+          dailySummary: dailyData?.summary ?? null,
+          onlyInDaily: onlyInDaily.map((e) => ({
+            eventId: e.eventId,
+            category: e.eventCategory,
+            subtype: e.eventSubtype,
+            type: e.type,
+            hasGroupedKey: Boolean(e.groupedSpeedIncidentKey),
+            hasSpeed: e.hasSpeed,
+            speed: e.speed,
+          })),
+          onlyInVehicle: onlyInVehicle.map((e) => ({
+            eventId: e.eventId,
+            category: e.eventCategory,
+            subtype: e.eventSubtype,
+            type: e.type,
+            speed: e.speed,
+            timestamp: e.eventTimestamp,
+          })),
+        },
+      });
+    } catch (err) {
+      logger.error("[dashboard/audit-events] Error", { error: err.message });
       return res.status(500).json({
         ok: false,
         error: "error interno",
