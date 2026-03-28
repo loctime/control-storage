@@ -79,6 +79,14 @@ router.get("/operations", async (req, res) => {
 
     const snap = await VEHICLES_REF.get();
 
+    const lastEventTimestampFromDoc = (updatedAt) => {
+      if (updatedAt == null) return null;
+      if (typeof updatedAt.toDate === "function") {
+        return updatedAt.toDate().toISOString();
+      }
+      return null;
+    };
+
     const groups = {};
     for (const doc of snap.docs) {
       const data = doc.data();
@@ -86,7 +94,11 @@ router.get("/operations", async (req, res) => {
       if (!groups[nombre]) {
         groups[nombre] = { nombre, plates: [], responsables: [] };
       }
-      groups[nombre].plates.push(doc.id);
+      groups[nombre].plates.push({
+        plate: doc.id,
+        totalEvents: data.totalEvents || 0,
+        lastEventTimestamp: lastEventTimestampFromDoc(data.updatedAt),
+      });
       // Usar responsablesNormalized como fuente de verdad
       const responsables = Array.isArray(data.responsablesNormalized)
         ? data.responsablesNormalized
