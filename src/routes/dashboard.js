@@ -106,9 +106,7 @@
       event.eventCategory === "exceso_velocidad" ||
       event.type === "exceso" ||
       // Eventos ya marcados como parte de un grupo de exceso (merge en vehicleEventService)
-      Boolean(event.groupedSpeedIncidentKey) ||
-      // Resumen persistido por buildEventSummary cuando hay velocidad medida
-      event.hasSpeed === true
+      Boolean(event.groupedSpeedIncidentKey)
     );
   }
 

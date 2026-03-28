@@ -16,9 +16,6 @@ function isSpeedExcessEvent(event) {
 
     // Marcadores de agrupación
     Boolean(event.groupedSpeedIncidentKey) ||
-
-    // Evento con velocidad medida (aunque no tenga categoría)
-    event.hasSpeed === true ||
     (event.type === "exceso" && typeof event.speed === "number")
   );
 }

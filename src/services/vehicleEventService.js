@@ -683,7 +683,7 @@ const ALLOWED_EVENT_TYPES = new Set([
  * @returns {object} eventSummary para el array events del documento dailyAlerts
  */
 function buildEventSummary(event) {
-  let eventType = event.type || "exceso";
+  let eventType = event.type || null;
   if (!ALLOWED_EVENT_TYPES.has(eventType)) {
     eventType = isSpeedExcessEvent(event) ? "exceso" : "no_identificado";
   }
