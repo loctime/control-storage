@@ -14,8 +14,8 @@ function isSpeedExcessEvent(event) {
     // Type directo (persistido en Firestore)
     event.type === "exceso" ||
 
-    // Marcadores de agrupación
-    Boolean(event.groupedSpeedIncidentKey) ||
+    // Marcadores de agrupación — solo válido si el evento base también es exceso
+    (Boolean(event.groupedSpeedIncidentKey) && event.type === "exceso") ||
     (event.type === "exceso" && typeof event.speed === "number")
   );
 }

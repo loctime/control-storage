@@ -781,8 +781,8 @@ async function updateDailyMetaBatch(dateKey, deltas) {
 
     for (const field of numericFields) {
       const delta = Number(deltas[field] || 0);
-      if (delta > 0) {
-        next[field] = Number(current[field] || 0) + delta;
+      if (delta !== 0) {
+        next[field] = Math.max(0, Number(current[field] || 0) + delta);
       }
     }
 

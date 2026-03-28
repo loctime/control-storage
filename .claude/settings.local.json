@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -r \"vehicle\" /c/Users/User/Desktop/ControlStorage/src/routes/*.js)"
+      "Bash(grep -r \"vehicle\" /c/Users/User/Desktop/ControlStorage/src/routes/*.js)",
+      "Bash(find /c/Users/User/Desktop/ControlStorage/scripts -type f -name *.js)"
     ]
   }
 }
