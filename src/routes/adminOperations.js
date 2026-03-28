@@ -1,5 +1,5 @@
 /**
- * adminOperations.js
+ * //src/routes/adminOperations.js
  * Endpoints de administración de operaciones sobre la colección apps/emails/vehicles.
  * Montado bajo /api/admin, protegido con authMiddleware en el mount.
  *
