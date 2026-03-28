@@ -13,7 +13,12 @@
   const admin = require("../firebaseAdmin");
   const { logger } = require("../utils/logger");
   const { auditDashboardData } = require("../services/dashboardAuditService");
-  const { getDashboardSummaryEnriched, getDashboardByPeriod } = require("../services/dashboardEnrichmentService");
+  const {
+    getDashboardSummaryEnriched,
+    getDashboardByPeriod,
+    calculateDailyBreakdown,
+    aggregateDashboardResults,
+  } = require("../services/dashboardEnrichmentService");
   const { normalizePlate } = require("../services/vehicleEventService");
 
   const db = admin.firestore();
@@ -36,6 +41,28 @@
     )
       return null;
     return trimmed;
+  }
+
+  /**
+   * Lista inclusive de claves YYYY-MM-DD desde startKey hasta endKey (orden cronológico).
+   * @returns {string[]|null} null si startKey > endKey
+   */
+  function expandInclusiveDateRange(startKey, endKey) {
+    const [ys, ms, ds] = startKey.split("-").map(Number);
+    const [ye, me, de] = endKey.split("-").map(Number);
+    const start = new Date(ys, ms - 1, ds);
+    const end = new Date(ye, me - 1, de);
+    if (start > end) return null;
+    const dates = [];
+    const cur = new Date(start);
+    while (cur <= end) {
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, "0");
+      const d = String(cur.getDate()).padStart(2, "0");
+      dates.push(`${y}-${m}-${d}`);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
   }
 
   function normalizeDriverName(driverName) {
@@ -432,6 +459,7 @@
 
   /**
    * GET /enriched?period=day|week|month|year&date=YYYY-MM-DD|YYYY-MM|YYYY
+   * O rango: ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD (ignora period y date; agrega como week/month/year)
    * Resumen enriquecido con dailyBreakdown
    * period: day (default), week, month, year
    * date: YYYY-MM-DD para day/week, YYYY-MM para month, YYYY para year
@@ -440,9 +468,75 @@
     console.log("[AUDIT-BACK] GET /api/dashboard/enriched query.period =", req.query.period);
     console.log("[AUDIT-BACK] GET /api/dashboard/enriched query.date =", req.query.date);
     try {
-      const period = (req.query.period || "day").toLowerCase();
-      let dateParam = req.query.date;
+      const rawStart = req.query.startDate;
+      const rawEnd = req.query.endDate;
+      const hasStart =
+        rawStart != null && typeof rawStart === "string" && rawStart.trim() !== "";
+      const hasEnd = rawEnd != null && typeof rawEnd === "string" && rawEnd.trim() !== "";
 
+      if (hasStart !== hasEnd) {
+        return res.status(400).json({
+          ok: false,
+          error: "Se requieren ambos parámetros startDate y endDate en formato YYYY-MM-DD",
+        });
+      }
+
+      let period = (req.query.period || "day").toLowerCase();
+      let dateParam = req.query.date;
+      let result;
+
+      if (hasStart && hasEnd) {
+        const rangeStart = parseDateKey(rawStart);
+        const rangeEnd = parseDateKey(rawEnd);
+        if (!rangeStart || !rangeEnd) {
+          return res.status(400).json({
+            ok: false,
+            error: "startDate y endDate deben ser fechas válidas en formato YYYY-MM-DD",
+          });
+        }
+        const dates = expandInclusiveDateRange(rangeStart, rangeEnd);
+        if (!dates) {
+          return res.status(400).json({
+            ok: false,
+            error: "startDate no puede ser posterior a endDate",
+          });
+        }
+
+        const rangeOptions = { maxConcurrency: 10 };
+        const dailyBreakdown = await calculateDailyBreakdown(dates);
+        const allResults = [];
+        for (const dateKey of dates) {
+          try {
+            const dayResult = await getDashboardSummaryEnriched(dateKey, rangeOptions);
+            if (dayResult.ok) {
+              allResults.push(dayResult);
+            }
+          } catch (err) {
+            console.error(`[dashboard] Error fetching data for ${dateKey}:`, err.message);
+          }
+        }
+
+        if (allResults.length === 0) {
+          return res.status(400).json({
+            ok: false,
+            error: "No hay datos disponibles para el rango indicado",
+          });
+        }
+
+        const aggregated = aggregateDashboardResults(allResults);
+        if (!aggregated.ok) {
+          return res.status(400).json(aggregated);
+        }
+
+        period = "range";
+        dateParam = rangeStart;
+        result = {
+          ...aggregated,
+          dailyBreakdown,
+          period: "range",
+          date: rangeStart,
+        };
+      } else {
       // Si no se proporciona date, obtener el último día con datos
       if (!dateParam) {
         const lastDate = await getLastDateWithData();
@@ -500,10 +594,11 @@
         }
       }
 
-      const result = await getDashboardByPeriod(period, dateParam, { maxConcurrency: 10 });
+      result = await getDashboardByPeriod(period, dateParam, { maxConcurrency: 10 });
 
       if (!result.ok) {
         return res.status(400).json(result);
+      }
       }
 
       // Construir vehicleDetails a partir de los vehículos enriquecidos

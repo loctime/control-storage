@@ -16,6 +16,7 @@ const repositoriesRoutes = require('./routes/repositories'); // Nuevo endpoint r
 const chatRoutes = require('./routes/chat'); // Endpoint de chat
 
 const adminRoutes = require('./routes/admin');
+const adminOperationsRoutes = require('./routes/adminOperations');
 const superdevRoutes = require('./routes/superdev');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
@@ -242,6 +243,7 @@ app.use('/v1/audio', authMiddleware, audioRoutes);
 app.use('/api/stores', authMiddleware, storesRoutes);
 app.use('/api/admin', authMiddleware, adminRoutes);
 app.use('/v1/admin', authMiddleware, adminRoutes);
+app.use('/api/admin', authMiddleware, adminOperationsRoutes);
 app.use('/api/feedback', authMiddleware, feedbackRoutes);
 app.use('/api/accounts', authMiddleware, accountsRoutes);
 app.use('/api/platform', authMiddleware, platformRoutes);
