@@ -8,6 +8,7 @@
  */
 
 const admin = require("../../firebaseAdmin");
+const { normalizeEmail, normalizeEmailArray } = require("../../shared/normalizeEmail");
 
 const db = admin.firestore();
 
@@ -19,31 +20,6 @@ const CONFIG_DOC_REF = db
   .doc("emails")
   .collection("config")
   .doc("config");
-
-/**
- * Normaliza email: trim y toLowerCase.
- * @param {string} email
- * @returns {string}
- */
-function normalizeEmail(email) {
-  if (email == null || typeof email !== "string") return "";
-  return email.trim().toLowerCase();
-}
-
-/**
- * Normaliza y deduplica un arreglo de correos.
- * @param {Array<string>} values
- * @returns {string[]}
- */
-function normalizeEmailArray(values) {
-  if (!Array.isArray(values)) return [];
-  const set = new Set();
-  for (const raw of values) {
-    const n = normalizeEmail(raw);
-    if (n) set.add(n);
-  }
-  return Array.from(set);
-}
 
 /**
  * Asegura que el usuario de acceso exista en apps/emails/access/{email}.

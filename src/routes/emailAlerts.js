@@ -11,6 +11,7 @@ const express = require("express");
 const router = express.Router();
 const admin = require("../firebaseAdmin");
 const { formatDateKey, getVehicle, normalizePlate } = require("../services/vehicleEventService");
+const { normalizeEmail, normalizeEmailArray } = require("../shared/normalizeEmail");
 const { getDailyTotalsByType } = require("../services/dailyMetricsService");
 const { syncAccessUsers } = require("../modules/emailUsers/emailUsers.service");
 const { logger } = require("../utils/logger");
@@ -114,91 +115,6 @@ function toDateKeyNumber(key) {
   const [y, m, d] = trimmed.split("-").map(Number);
   if (!y || !m || !d) return NaN;
   return y * 10000 + m * 100 + d;
-}
-
-function normalizeEmail(email) {
-  if (email == null || typeof email !== "string") return "";
-  return email.trim().toLowerCase();
-}
-
-function normalizeEmailArray(values) {
-  if (!Array.isArray(values)) return [];
-  const set = new Set();
-  for (const value of values) {
-    const normalized = normalizeEmail(value);
-    if (normalized) set.add(normalized);
-  }
-  return Array.from(set);
-}
-
-/**
- * Obtiene alertas pendientes de d?as anteriores a hoy (Argentina).
- * Una sola capa de filtrado: dateKey < todayKey y alertSent !== true.
- *
- * @deprecated No escala bien con muchos d?as hist?ricos. Usar getPendingAlertsForDateKey por cada dateKey de getLastNDaysDateKeysArgentina(N).
- * @param {string} todayKey - Fecha de hoy en Argentina (YYYY-MM-DD).
- * @returns {Promise<Array<{ id: string, dateKey: string, ... }>>} Documentos de veh?culos pendientes (nunca incluye el d?a actual).
- */
-async function getPendingAlerts(todayKey) {
-  const dateKeysSnap = await DAILY_ALERTS_REF.get();
-  const allDateKeys = dateKeysSnap.docs.map((doc) => doc.id);
-
-  const todayNum = toDateKeyNumber(todayKey);
-  const pastDateKeys = allDateKeys.filter((dateKey) => {
-    const num = toDateKeyNumber(dateKey);
-    return Number.isFinite(num) && Number.isFinite(todayNum) && num < todayNum;
-  });
-
-  logger.info(
-    "[GET-PENDING-ALERTS][DEBUG] todayKey=%s, todayNum=%s, allDateKeys=%j, pastDateKeys=%j",
-    todayKey,
-    String(todayNum),
-    allDateKeys,
-    pastDateKeys
-  );
-
-  const allAlerts = [];
-  for (const dateKey of pastDateKeys) {
-    try {
-      const vehiclesSnap = await DAILY_ALERTS_REF.doc(dateKey).collection("vehicles").get();
-      logger.info(
-        "[GET-PENDING-ALERTS][DEBUG] dateKey=%s, vehicles=%d",
-        dateKey,
-        vehiclesSnap.docs.length
-      );
-
-      for (const vehicleDoc of vehiclesSnap.docs) {
-        const data = vehicleDoc.data();
-        const isPending = data.alertSent !== true;
-
-        logger.info(
-          "[GET-PENDING-ALERTS][DEBUG] Evaluando doc dateKey=%s id=%s alertSent=%s isPending=%s",
-          dateKey,
-          vehicleDoc.id,
-          String(data.alertSent),
-          String(isPending)
-        );
-
-        if (isPending) {
-          allAlerts.push({ id: vehicleDoc.id, dateKey, ...data });
-        }
-      }
-    } catch (e) {
-      const errMsg = e && e.message ? e.message : String(e);
-      const errCode = e && e.code !== undefined ? e.code : "n/a";
-      logger.error(
-        `[GET-PENDING-ALERTS][DEBUG] Error leyendo vehicles para dateKey=${dateKey}: ${errMsg} (code=${errCode})`
-      );
-      continue;
-    }
-  }
-
-  logger.info(
-    "[GET-PENDING-ALERTS][DEBUG] Total alertas pendientes devueltas: %d",
-    allAlerts.length
-  );
-
-  return allAlerts;
 }
 
 /**

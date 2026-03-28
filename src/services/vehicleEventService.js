@@ -7,6 +7,7 @@
 const crypto = require("crypto");
 const admin = require("../firebaseAdmin");
 const { isSpeedExcessEvent, normalizeEventTypeForSummary } = require("../shared/eventClassification");
+const { normalizeEmail, normalizeEmailArray } = require("../shared/normalizeEmail");
 
 const MAX_BATCH_SIZE = 500;
 const MAX_DAILY_EVENTS_STORED = Math.max(
@@ -272,32 +273,6 @@ function normalizePlate(plate) {
     .replace(/[^a-zA-Z0-9]/g, "") // Elimina espacios, guiones y caracteres especiales
     .toUpperCase()
     .trim();
-}
-
-/**
- * Normaliza email: trim + toLowerCase.
- * Duplicado ligero de lógica de emailUsers.service para evitar dependencia circular.
- * @param {string} email
- * @returns {string}
- */
-function normalizeEmail(email) {
-  if (email == null || typeof email !== "string") return "";
-  return email.trim().toLowerCase();
-}
-
-/**
- * Normaliza y deduplica un arreglo de correos.
- * @param {Array<string>} values
- * @returns {string[]}
- */
-function normalizeEmailArray(values) {
-  if (!Array.isArray(values)) return [];
-  const set = new Set();
-  for (const raw of values) {
-    const n = normalizeEmail(raw);
-    if (n) set.add(n);
-  }
-  return Array.from(set);
 }
 
 /**
