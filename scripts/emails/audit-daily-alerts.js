@@ -6,6 +6,10 @@ const SERVICE_ACCOUNT_PATH = path.join(
   "../serviceAccountKey-controlfile.json"
 );
 
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+// Script de solo lectura — sin parámetros configurables
+// ─────────────────────────────────────────────────────────────
+
 const serviceAccount = require(SERVICE_ACCOUNT_PATH);
 
 admin.initializeApp({
@@ -19,7 +23,12 @@ function normalizePlate(plate) {
 }
 
 async function run() {
-  console.log("=== AUDITORÍA DAILY ALERTS ===");
+  console.log("===========================================")
+  console.log("Script: audit-daily-alerts.js")
+  console.log("Descripción: Lee dailyAlerts y reporta IDs no normalizados, eventIds duplicados y desfases summary/events")
+  console.log("Modo: SOLO LECTURA")
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
 
   const dailyRef = db
     .collection("apps")

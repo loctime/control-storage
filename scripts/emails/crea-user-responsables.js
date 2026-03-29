@@ -1,6 +1,6 @@
 /**
  * Bootstrap de prueba:
- * 1) Crea/asegura usuarios en /apps/emails/users/{email} (con role y active)
+ * 1) Crea/asegura usuarios en /apps/emails/access/{email} (con role y active)
  * 2) Completa responsables faltantes en /apps/emails/vehicles/{plate}
  * 3) (Opcional) Asigna responsables específicos por patente (tu mapa plateToEmails)
  *
@@ -9,7 +9,7 @@
  * - serviceAccountKey-controlfile.json en la raíz del proyecto
  *
  * Ejecutar:
- * node scripts/bootstrap-test-users-and-responsables.js
+ * node scripts/crea-user-responsables.js
  */
 
 const admin = require("firebase-admin");
@@ -17,7 +17,11 @@ const path = require("path");
 
 const SERVICE_ACCOUNT_PATH = path.join(process.cwd(), "serviceAccountKey-controlfile.json");
 
-const USERS_COLLECTION = "apps/emails/users";
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+const DRY_RUN = true         // false para ejecutar cambios reales
+// ─────────────────────────────────────────────────────────────
+
+const USERS_COLLECTION = "apps/emails/access";
 const VEHICLES_COLLECTION = "apps/emails/vehicles";
 const RESPONSABLE_FIELD = "responsables";
 
@@ -38,7 +42,7 @@ const TEST_USERS = [
   { email: TEST_EMAILS.E4, role: "responsable", active: true },
   { email: TEST_EMAILS.E5, role: "responsable", active: true },
 
-  // Si querés un admin “por Firestore” para endpoints tipo ensureUser/me:
+  // Si querés un admin "por Firestore" para endpoints tipo ensureUser/me:
   // { email: "admin@test.com", role: "admin", active: true },
 ];
 
@@ -206,6 +210,20 @@ async function main() {
   }
 
   const db = admin.firestore();
+
+  console.log("===========================================")
+  console.log("Script: crea-user-responsables.js")
+  console.log("Descripción: Crea usuarios en apps/emails/access y asigna responsables a vehículos")
+  console.log("Modo: " + (DRY_RUN ? "DRY-RUN (solo lectura)" : "⚠️  ESCRITURA REAL"))
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
+
+  if (DRY_RUN) {
+    console.log("[DRY-RUN] Se omiten todos los writes a Firestore.")
+    console.log("[DRY-RUN] Usuarios que se crearían:", TEST_USERS.map(u => u.email))
+    console.log("[DRY-RUN] Patentes con responsables:", Object.keys(plateToEmails).length)
+    return
+  }
 
   // 1) Crea usuarios Firestore
   const usersWritten = await ensureTestUsers(db);

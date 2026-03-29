@@ -8,8 +8,12 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+const DRY_RUN = true         // false para ejecutar cambios reales
+// ─────────────────────────────────────────────────────────────
+
 function parseArgs(argv) {
-  const out = { dryRun: false, limit: null };
+  const out = { dryRun: DRY_RUN, limit: null };
 
   for (let i = 2; i < argv.length; i++) {
     if (argv[i] === "--dry-run") {
@@ -132,6 +136,13 @@ async function createMissingDayDocs({ dryRun, limit }) {
 
 async function main() {
   const args = parseArgs(process.argv);
+
+  console.log("===========================================")
+  console.log("Script: create-documento.js")
+  console.log("Descripción: Crea el doc de nivel-día faltante en dailyAlerts para fechas sin documento raíz")
+  console.log("Modo: " + (args.dryRun ? "DRY-RUN (solo lectura)" : "⚠️  ESCRITURA REAL"))
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
 
   await createMissingDayDocs(args);
 }

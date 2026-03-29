@@ -8,8 +8,12 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+const DRY_RUN = true         // false para ejecutar cambios reales
+// ─────────────────────────────────────────────────────────────
+
 function parseArgs(argv) {
-  const out = { daysToKeepFull: 7, dryRun: false, limitDays: null, debug: false };
+  const out = { daysToKeepFull: 7, dryRun: DRY_RUN, limitDays: null, debug: false };
 
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -164,6 +168,14 @@ async function compressDailyAlerts({ daysToKeepFull, dryRun, limitDays }) {
 
 async function main() {
   const args = parseArgs(process.argv);
+
+  console.log("===========================================")
+  console.log("Script: compress-daily-alerts.js")
+  console.log("Descripción: Elimina el array events de docs de dailyAlerts antiguos para comprimir almacenamiento")
+  console.log("Modo: " + (args.dryRun ? "DRY-RUN (solo lectura)" : "⚠️  ESCRITURA REAL"))
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
+
   if (args.debug) {
     await debug();
     return;
@@ -175,4 +187,3 @@ main().catch((err) => {
   console.error(err?.stack || String(err));
   process.exitCode = 1;
 });
-

@@ -13,16 +13,23 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-const TARGET_DATES = ["2026-03-04"];
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+const DRY_RUN = true         // false para ejecutar cambios reales
+const TARGET_DATE = "2026-03-04"
+// ─────────────────────────────────────────────────────────────
 
-const applyChanges = process.argv.includes("--apply");
-
-if (!applyChanges) {
-  console.log("DRY-RUN: no se escribirá nada en Firestore.");
-  console.log("Pasá --apply para ejecutar los cambios reales.\n");
-}
+const TARGET_DATES = [TARGET_DATE];
+const applyChanges = !DRY_RUN && process.argv.includes("--apply");
 
 async function resetAlerts() {
+  console.log("===========================================")
+  console.log("Script: reset-daily-alerts.js")
+  console.log("Descripción: Resetea alertSent=false en dailyAlerts/{fecha}/vehicles para TARGET_DATE")
+  console.log("Modo: " + (applyChanges ? "⚠️  ESCRITURA REAL" : "DRY-RUN (solo lectura)"))
+  console.log("Variables: TARGET_DATE=" + TARGET_DATE)
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
+
   console.log("🔍 Reseteando alertas por fecha...");
 
   let totalUpdated = 0;

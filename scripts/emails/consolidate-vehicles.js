@@ -6,7 +6,9 @@ const SERVICE_ACCOUNT_PATH = path.join(
   "../serviceAccountKey-controlfile.json"
 );
 
-const APPLY_CHANGES = true; // 🔒 cambiar a true cuando confirmes
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+const DRY_RUN = true         // false para ejecutar cambios reales
+// ─────────────────────────────────────────────────────────────
 
 const serviceAccount = require(SERVICE_ACCOUNT_PATH);
 
@@ -63,10 +65,12 @@ function mergeVehicleData(docs) {
 }
 
 async function run() {
-  console.log("======================================");
-  console.log("CONSOLIDACIÓN DE VEHÍCULOS");
-  console.log("Modo:", APPLY_CHANGES ? "WRITE" : "DRY RUN");
-  console.log("======================================");
+  console.log("===========================================")
+  console.log("Script: consolidate-vehicles.js")
+  console.log("Descripción: Fusiona docs de vehículos con IDs duplicados y elimina los duplicados")
+  console.log("Modo: " + (DRY_RUN ? "DRY-RUN (solo lectura)" : "⚠️  ESCRITURA REAL"))
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
 
   const collectionRef = db
     .collection("apps")
@@ -102,7 +106,7 @@ async function run() {
 
     console.log("Resultado merge:", mergedData);
 
-    if (APPLY_CHANGES) {
+    if (!DRY_RUN) {
       const mainRef = collectionRef.doc(plate);
       await mainRef.set(mergedData, { merge: false });
 

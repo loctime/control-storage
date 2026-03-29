@@ -1,4 +1,3 @@
-// reset-day.js
 const admin = require("firebase-admin");
 const path = require("path");
 
@@ -14,9 +13,10 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// ⚠️ CAMBIAR ACA EL DÍA QUE QUERÉS RESETEAR
-const TARGET_DATE = "2026-03-13"; // formato YYYY-MM-DD
-const DRY_RUN = process.argv.includes("--dry-run");
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+const DRY_RUN = true         // false para ejecutar cambios reales
+const TARGET_DATE = "2026-03-13"
+// ─────────────────────────────────────────────────────────────
 
 /**
  * Borra documentos de apps/emails/inbox para el día dado
@@ -150,11 +150,15 @@ async function deleteDailyAlertsDay(dateKey) {
 }
 
 async function run() {
-  try {
-    console.log("========== RESET INICIADO ==========");
-    console.log(DRY_RUN ? "MODO DRY RUN (no se borra nada)" : "MODO REAL (se borran datos)");
-    console.log("Día objetivo:", TARGET_DATE);
+  console.log("===========================================")
+  console.log("Script: resetRsvDay.js")
+  console.log("Descripción: Elimina inbox, vehicleEvents y dailyAlerts completo para un día específico")
+  console.log("Modo: " + (DRY_RUN ? "DRY-RUN (solo lectura)" : "⚠️  ESCRITURA REAL"))
+  console.log("Variables: TARGET_DATE=" + TARGET_DATE)
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
 
+  try {
     await deleteInboxByDate(TARGET_DATE);
     await deleteVehicleEventsByDate(TARGET_DATE);
     await deleteDailyAlertsDay(TARGET_DATE);

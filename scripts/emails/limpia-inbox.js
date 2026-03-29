@@ -7,7 +7,17 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+const DRY_RUN = true         // false para ejecutar cambios reales
+// ─────────────────────────────────────────────────────────────
+
 async function compressInbox(days = 7, dryRun = false) {
+  console.log("===========================================")
+  console.log("Script: limpia-inbox.js")
+  console.log("Descripción: Elimina campos body_html/text/preview/attachments de docs de inbox con más de N días")
+  console.log("Modo: " + (dryRun ? "DRY-RUN (solo lectura)" : "⚠️  ESCRITURA REAL"))
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
 
   const base = db.collection("apps").doc("emails").collection("inbox");
   const snap = await base.get();
@@ -54,4 +64,4 @@ async function compressInbox(days = 7, dryRun = false) {
   });
 }
 
-compressInbox(7, false);
+compressInbox(7, DRY_RUN);

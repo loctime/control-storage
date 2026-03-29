@@ -7,9 +7,10 @@ const SERVICE_ACCOUNT_PATH = path.join(
   "serviceAccountKey-controlfile.json"
 );
 
-const NEW_RESPONSABLE = "diegobertosi@gmail.com";
-
-const APPLY_CHANGES = true; // false = solo ver cambios
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+const DRY_RUN = true         // false para ejecutar cambios reales
+const TARGET_EMAIL = "diegobertosi@gmail.com"
+// ─────────────────────────────────────────────────────────────
 
 const serviceAccount = require(SERVICE_ACCOUNT_PATH);
 
@@ -20,10 +21,13 @@ admin.initializeApp({
 const db = admin.firestore();
 
 async function run() {
-  console.log("======================================");
-  console.log("REEMPLAZO TOTAL DE RESPONSABLES");
-  console.log("Modo:", APPLY_CHANGES ? "WRITE" : "DRY RUN");
-  console.log("======================================");
+  console.log("===========================================")
+  console.log("Script: set-vehicle-responsibles.js")
+  console.log("Descripción: Reemplaza los responsables de TODOS los vehículos por TARGET_EMAIL")
+  console.log("Modo: " + (DRY_RUN ? "DRY-RUN (solo lectura)" : "⚠️  ESCRITURA REAL"))
+  console.log("Variables: TARGET_EMAIL=" + TARGET_EMAIL)
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
 
   const snapshot = await db
     .collection("apps")
@@ -49,7 +53,7 @@ async function run() {
       : [];
 
     // Si ya es exactamente el único email, no tocar
-    if (current.length === 1 && current[0] === NEW_RESPONSABLE) {
+    if (current.length === 1 && current[0] === TARGET_EMAIL) {
       continue;
     }
 
@@ -57,11 +61,11 @@ async function run() {
 
     console.log("→", plate);
     console.log("   Responsables actuales:", current);
-    console.log("   Nuevo responsable:", NEW_RESPONSABLE);
+    console.log("   Nuevo responsable:", TARGET_EMAIL);
 
-    if (APPLY_CHANGES) {
+    if (!DRY_RUN) {
       await doc.ref.update({
-        responsables: [NEW_RESPONSABLE],
+        responsables: [TARGET_EMAIL],
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }

@@ -6,6 +6,10 @@ const SERVICE_ACCOUNT_PATH = path.join(
   "../serviceAccountKey-controlfile.json"
 );
 
+// ─── CONFIGURACIÓN ───────────────────────────────────────────
+// Script de solo lectura — sin parámetros configurables
+// ─────────────────────────────────────────────────────────────
+
 const serviceAccount = require(SERVICE_ACCOUNT_PATH);
 
 admin.initializeApp({
@@ -19,7 +23,12 @@ function normalizePlate(plate) {
 }
 
 async function run() {
-  console.log("=== AUDITORÍA VEHICLES ===");
+  console.log("===========================================")
+  console.log("Script: audit-vehicles.js")
+  console.log("Descripción: Lee la colección vehicles y reporta inconsistencias de ID, plate, responsables y totalEvents")
+  console.log("Modo: SOLO LECTURA")
+  console.log("===========================================")
+  await new Promise(r => setTimeout(r, 3000))
 
   const ref = db
     .collection("apps")
