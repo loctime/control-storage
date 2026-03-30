@@ -153,6 +153,19 @@ router.post('/presign', async (req, res) => {
 
     // Lógica de taskbar eliminada - ya no necesitamos APP_CODE
 
+    // Subida por proxy: el navegador envía el archivo al API (mismo origen/CORS que presign).
+    // Muchos despliegues de B2 no permiten PUT cross-origin; sin esto falla "Failed to fetch".
+    // Solo aplica a subida simple (multipart ≥128MB sigue requiriendo PUT directo a las partes).
+    if (!uploadSessionData.multipart) {
+      uploadSessionData.proxyUpload = {
+        method: 'POST',
+        path: '/v1/uploads/proxy-upload',
+        contentType: 'multipart/form-data',
+        fileField: 'file',
+        sessionIdField: 'sessionId',
+      };
+    }
+
     res.json(uploadSessionData);
   } catch (error) {
     // Manejar errores del guard
