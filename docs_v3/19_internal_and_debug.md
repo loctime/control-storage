@@ -53,26 +53,31 @@ Debug echo endpoint. No authentication required. Returns request metadata.
 
 ### POST /api/uploads/proxy-upload
 
-Direct multipart upload where the file passes through the backend to B2. Alternative to the standard presign flow.
+Second step of the **standard presign flow** when the client cannot `PUT` to B2 from the browser (CORS). **Not** a standalone upload: call **`POST /v1/uploads/presign` first**, then send the file here, then **`POST /v1/uploads/confirm`**.
 
-**Auth:** Required
+**Auth:** Required  
 **Content-Type:** `multipart/form-data`
 
 **Form fields:**
 
 | Field | Required | Description |
 |---|---|---|
-| `file` | Yes | File to upload |
-| `parentId` | No | Target folder in `files` collection |
+| `sessionId` | Yes | Same as `uploadSessionId` from presign |
+| `file` | Yes | File to upload (multer field name `file`) |
 
-**Optional virus scanning:** If `CLOUDMERSIVE_API_KEY` env var is set, files are scanned before upload.
+**Optional virus scanning:** If `CLOUDMERSIVE_API_KEY` is set, suspicious files may be scanned before B2 upload.
 
 **Response `200`:**
 ```json
-{ "fileId": "firestoreDocId" }
+{
+  "success": true,
+  "message": "Archivo subido correctamente",
+  "etag": "..."
+}
 ```
 
-**Errors:** `400` no file · `401` · `413` virus detected · `500`
+**Errors:** `400` no file / bad session · `403` · `404` session not found · `500`  
+Full contract: [05_uploads.md](./05_uploads.md), [07_endpoints_reference.md](./07_endpoints_reference.md).
 
 ---
 

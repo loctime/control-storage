@@ -16,7 +16,7 @@
 | [02_architecture.md](./02_architecture.md) | System components · Proxy layer · Request lifecycle · Route prefix rules |
 | [03_authentication.md](./03_authentication.md) | Firebase ID Tokens · Custom claims · Ownership enforcement · IAM |
 | [04_files_and_folders.md](./04_files_and_folders.md) | Unified `files` collection · Hierarchy · Soft delete · Quota |
-| [05_uploads.md](./05_uploads.md) | 3-step upload flow · Presign → B2 → Confirm · Multipart · Platform account guard |
+| [05_uploads.md](./05_uploads.md) | 3-step upload flow · Presign → B2 or **proxy-upload** → Confirm · Browser CORS · Multipart |
 | [06_shares.md](./06_shares.md) | Share links · Token access · Image proxy · Public endpoints |
 | [07_endpoints_reference.md](./07_endpoints_reference.md) | Complete endpoint reference (all methods, bodies, responses) |
 | [08_data_models.md](./08_data_models.md) | Firestore schemas · Security rules · Field name standards · Platform account |

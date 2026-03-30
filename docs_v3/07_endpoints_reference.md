@@ -25,7 +25,8 @@
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | `GET` | `/api/health` | None | Health check |
-| `POST` | `/api/uploads/presign` | Required | Create upload session |
+| `POST` | `/api/uploads/presign` | Required | Create upload session (+ optional `proxyUpload` for browsers) |
+| `POST` | `/api/uploads/proxy-upload` | Required | Upload file via backend after presign (multipart form; avoids B2 CORS) |
 | `POST` | `/api/uploads/confirm` | Required | Confirm completed upload |
 | `POST` | `/api/controlfile/upload` | Required | Single-step upload (body passthrough) |
 | `GET` | `/api/files/list` | Required | List files and folders (paginated, with cache) |
@@ -112,13 +113,28 @@ Create upload session. Validate quota. Get B2 presigned URL.
 }
 ```
 
-**Response `200`:**
+**Response `200` (simple upload, under 128 MB):** includes presigned URL fields plus **`proxyUpload`** so browser clients can avoid cross-origin `PUT` to B2 (see [05_uploads.md](./05_uploads.md)).
+
 ```json
 {
   "uploadSessionId": "sessionId",
-  "url": "https://b2.example.com/upload/..."
+  "key": "...",
+  "fileKey": "...",
+  "url": "https://b2.example.com/upload/...",
+  "uploadUrl": "https://b2.example.com/upload/...",
+  "method": "PUT",
+  "headers": {},
+  "proxyUpload": {
+    "method": "POST",
+    "path": "/v1/uploads/proxy-upload",
+    "contentType": "multipart/form-data",
+    "fileField": "file",
+    "sessionIdField": "sessionId"
+  }
 }
 ```
+
+**`proxyUpload` is omitted** when the response uses **multipart** URLs (file ≥ 128 MB).
 
 For multipart (≥128MB):
 ```json
@@ -137,6 +153,36 @@ For multipart (≥128MB):
 **Errors:** `401` invalid token · `413` quota exceeded (`size > limits.storageBytes`) · `500` server error
 
 **Side effects:** Creates `uploadSessions/{id}` (platform account guard checked — no `pendingBytes` update)
+
+---
+
+### POST /api/uploads/proxy-upload
+
+Upload the file **through the ControlFile backend** after **`POST /v1/uploads/presign`**, using the same Firebase session. Use this from browsers when direct `PUT` to B2 fails (CORS). Not used for presigned **multipart** sessions.
+
+**Auth:** Required  
+**Backend:** `POST /v1/uploads/proxy-upload`  
+**Content-Type:** `multipart/form-data`
+
+**Form fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `sessionId` | Yes | Must equal `uploadSessionId` returned by presign |
+| `file` | Yes | File bytes (field name must be `file`) |
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Archivo subido correctamente",
+  "etag": "..."
+}
+```
+
+**Side effects:** Writes object to B2 at the session’s `bucketKey`; sets `uploadSessions/{sessionId}.status` to **`uploaded`**. Client must still call **`POST /v1/uploads/confirm`**.
+
+**Errors:** `400` missing file or session · `403` session belongs to another user · `404` unknown session · `500`
 
 ---
 

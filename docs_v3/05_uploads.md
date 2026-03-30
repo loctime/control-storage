@@ -4,13 +4,20 @@
 
 ## Overview
 
-ControlFile uses a **3-step upload flow**. Files are uploaded **directly from the client to Backblaze B2** — they never stream through the ControlFile backend (except via the alternate `controlfile/upload` path).
+ControlFile uses a **3-step upload flow**. By default, files are uploaded **directly from the client to Backblaze B2** (the ControlFile backend is not in the data path for that step).
 
 ```
-Step 1  →  POST /api/uploads/presign   →  Create session, validate quota, get presigned URL
-Step 2  →  Client PUT → B2 directly    →  Upload file content (backend not involved)
-Step 3  →  POST /api/uploads/confirm   →  Verify B2, create file record, update quota
+Step 1  →  POST /api/uploads/presign   →  Create session, validate quota, get presigned URL (+ optional proxy hints)
+Step 2  →  Client PUT → B2 directly    →  Upload bytes (see “Browser uploads” below)
+   or  →  POST /v1/uploads/proxy-upload →  Same-origin upload; backend writes to B2
+Step 3  →  POST /api/uploads/confirm   →  Verify B2, create file record
 ```
+
+**Browser uploads (SPAs, Vite, etc.):** Cross-origin `PUT` from the browser to the B2 S3 endpoint often fails with `TypeError: Failed to fetch` because the bucket must expose strict **CORS** rules (`s3_put`, allowed origins, headers). Many teams cannot or prefer not to depend on that. For **simple** uploads (file size under **128 MB**), the presign response includes a **`proxyUpload`** object: send `multipart/form-data` to `POST /v1/uploads/proxy-upload` with the same Firebase token, then call **confirm** as usual. The file passes through the ControlFile backend once, then **confirm** unchanged.
+
+**Multipart (≥ 128 MB):** The presign response uses B2 multipart URLs; there is **no** `proxyUpload` in the response. You must use **direct PUT** to each part (and fix B2 CORS for your origin) or upload from a server environment.
+
+Other server-side shortcuts: `POST /v1/controlfile/upload` (different contract — see [Alternate Upload Path](#alternate-upload-path)).
 
 ---
 
@@ -64,13 +71,28 @@ If quota is exceeded, the request fails with `413` — no session is created.
 }
 ```
 
-For simple uploads (< 128 MB):
+For simple uploads (under 128 MB), the response also includes **`method`**, **`uploadUrl`**, **`proxyUpload`** (browser-friendly), and other fields used by legacy SDKs:
+
 ```json
 {
   "uploadSessionId": "abc123",
-  "url": "https://b2.example.com/..."
+  "key": "uid/parentPath/timestamp_rand_filename.pdf",
+  "fileKey": "uid/parentPath/timestamp_rand_filename.pdf",
+  "url": "https://s3....backblazeb2.com/...",
+  "uploadUrl": "https://s3....backblazeb2.com/...",
+  "method": "PUT",
+  "headers": {},
+  "proxyUpload": {
+    "method": "POST",
+    "path": "/v1/uploads/proxy-upload",
+    "contentType": "multipart/form-data",
+    "fileField": "file",
+    "sessionIdField": "sessionId"
+  }
 }
 ```
+
+Use **`proxyUpload.path`** with your `BACKEND_URL` (e.g. `https://controlfile.example.com/v1/uploads/proxy-upload`). Form fields: **`sessionId`** = value of **`uploadSessionId`**, **`file`** = the `File` / `Blob`. **Do not** set `Content-Type` manually on `fetch` — the browser sets the `multipart` boundary. Then **`POST /v1/uploads/confirm`** with `{ "uploadSessionId": "abc123" }`.
 
 For multipart uploads (≥ 128 MB):
 ```json
@@ -98,9 +120,9 @@ For multipart uploads (≥ 128 MB):
 
 ## Step 2: Upload to B2
 
-The client uploads directly to B2 using the presigned URL. **The ControlFile backend is not involved in this step.**
+Either the client uploads **directly** to B2 (presigned URL) or **via proxy** (recommended for browsers when `proxyUpload` is present).
 
-### Simple Upload
+### Simple upload — direct PUT (server or CORS-ready origins)
 
 ```http
 PUT {url}
@@ -108,7 +130,28 @@ Content-Type: application/pdf
 [file bytes]
 ```
 
-Presigned URL expires in **1 hour**.
+Presigned URL expires in **1 hour**. Ensure the B2 bucket **S3 CORS** allows your web app origin, **`PUT`**, and headers such as **`Content-Type`**.
+
+### Simple upload — `POST /v1/uploads/proxy-upload` (browser-safe)
+
+**Auth:** `Authorization: Bearer <firebase-id-token>`  
+**Content-Type:** `multipart/form-data`
+
+| Part | Name | Value |
+|---|---|---|
+| Form field | `sessionId` | `uploadSessionId` from presign |
+| File | `file` | Raw file (same name/size as declared in presign) |
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "message": "Archivo subido correctamente",
+  "etag": "..."
+}
+```
+
+The session moves to **`uploaded`**; then call **confirm**. See [07_endpoints_reference.md](./07_endpoints_reference.md) for errors and edge cases.
 
 ### Multipart Upload
 
