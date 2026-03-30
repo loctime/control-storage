@@ -12,6 +12,9 @@ const REGION_FROM_ENDPOINT = (() => {
   }
 })();
 
+// WHEN_REQUIRED: evita checksum CRC32 en la query del presign (SDK default WHEN_SUPPORTED).
+// Sin esto, el PUT desde el navegador a B2 suele fallar: el cliente no envía las cabeceras
+// de checksum que la URL presignada implica → 403 u error opaco "Failed to fetch".
 const s3Client = new S3Client({
   region: REGION_FROM_ENDPOINT,
   endpoint: B2_ENDPOINT,
@@ -20,6 +23,8 @@ const s3Client = new S3Client({
     secretAccessKey: process.env.B2_APPLICATION_KEY,
   },
   forcePathStyle: true,
+  requestChecksumCalculation: 'WHEN_REQUIRED',
+  responseChecksumValidation: 'WHEN_REQUIRED',
 });
 
 const BUCKET_NAME = process.env.B2_BUCKET_NAME;

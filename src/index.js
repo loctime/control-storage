@@ -93,7 +93,8 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
       'https://gastos.controldoc.app',
       'https://auditoria.controldoc.app',
       'https://repo.controldoc.app',
-      'https://hise.controldoc.app'
+      'https://hise.controldoc.app',
+      'https://music.controldoc.app'
     ];
 
 logger.info('CORS allowed origins', { allowedOrigins });
