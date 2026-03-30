@@ -1,79 +1,292 @@
 const admin = require("firebase-admin");
 const path = require("path");
+const { normalizeEmailArray } = require("../../src/shared/normalizeEmail");
 
-// service account en la misma carpeta
-const SERVICE_ACCOUNT_PATH = path.join(
-  __dirname,
-  "serviceAccountKey-controlfile.json"
-);
+const SERVICE_ACCOUNT_PATH = path.join(process.cwd(), "serviceAccountKey-controlfile.json");
 
-// ─── CONFIGURACIÓN ───────────────────────────────────────────
-const DRY_RUN = true         // false para ejecutar cambios reales
-const TARGET_EMAIL = "diegobertosi@gmail.com"
-// ─────────────────────────────────────────────────────────────
+const DOC_PATH_PREFIX = "apps/emails/vehicles";
 
-const serviceAccount = require(SERVICE_ACCOUNT_PATH);
+const DEFAULT_EMAIL = "hys@maximia.com.ar";
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
 
-const db = admin.firestore();
+// ==============================
+// DEFINICIÓN DE GRUPOS
+// ==============================
 
-async function run() {
-  console.log("===========================================")
-  console.log("Script: set-vehicle-responsibles.js")
-  console.log("Descripción: Reemplaza los responsables de TODOS los vehículos por TARGET_EMAIL")
-  console.log("Modo: " + (DRY_RUN ? "DRY-RUN (solo lectura)" : "⚠️  ESCRITURA REAL"))
-  console.log("Variables: TARGET_EMAIL=" + TARGET_EMAIL)
-  console.log("===========================================")
-  await new Promise(r => setTimeout(r, 3000))
+const GROUPS = {
 
-  const snapshot = await db
-    .collection("apps")
-    .doc("emails")
-    .collection("vehicles")
-    .get();
+  BAHIA_BLANCA: {
+    operacion: "BAHIA_BLANCA",
+    emails: [
+      "ezequiel.hanna@maximia.com.ar",
+      "analia.basilotto@maximia.com.ar",
+    ],
+    plates: [
+      // AG572HC fue movida a COMIRSA
+      "AF990QZ",
+      "AF473JR",
+      "AH170OY",
+      "AH203DC",
+    ],
+  },
 
-  console.log("Vehículos encontrados:", snapshot.size);
+  AESA: {
+    operacion: "AESA",
+    emails: [
+      "alberto.kruger@maximia.com.ar",
+      "silvana.bilbao@maximia.com.ar",
+      "claudio.visceglie@maximia.com.ar",
+    ],
+    plates: [
+      "AG338YV",
+      "AH107UY",
+    ],
+  },
 
-  if (snapshot.empty) {
-    console.log("No hay vehículos.");
-    return;
-  }
+  AESA_EXTRA: {
+    operacion: "AESA",
+    emails: [
+      "alberto.kruger@maximia.com.ar",
+      "silvana.bilbao@maximia.com.ar",
+      "claudio.visceglie@maximia.com.ar",
+    ],
+    plates: [
+      "AG338YX",
+    ],
+  },
 
-  let updates = 0;
+  COMIRSA: {
+    operacion: "COMIRSA",
+    emails: [
+      "rocio.ceballos@maximia.com.ar",
+      "analia.basilotto@maximia.com.ar",
+    ],
+    plates: [
+      "AG572HC", // movida desde BAHIA_BLANCA
+      "AB456BA",
+      "AF999DP",
+      "AF405HE",
+    ],
+  },
 
-  for (const doc of snapshot.docs) {
-    const plate = doc.id;
-    const data = doc.data();
+  PK327: {
+    operacion: "PK327",
+    emails: [
+      "rodrigo.gauna@maximia.com.ar",
+      "patricio.lopez@maximia.com.ar",
+      "analia.reyes@maximia.com.ar",
+      "analia.basilotto@maximia.com.ar",
+    ],
+    plates: [
+      "AG572HD",
+      "AG989PP",
+      "AH989PV", // corregido: era AG989PV
+      "AD374LU",
+      "AF990OE",
+    ],
+  },
 
-    const current = Array.isArray(data.responsables)
-      ? data.responsables
-      : [];
+  RINCON_DE_ARANDA: {
+    operacion: "RINCON_DE_ARANDA",
+    emails: [
+      "daniel.moreno@maximia.com.ar",
+      "hys.rda@maximia.com.ar",
+      "alejandro.alcazar@maximia.com.ar",
+      "claudio.visceglie@maximia.com.ar",
+    ],
+    plates: [
+      "AG572HE",
+      "AG338XC",
+      "AG338XG",
+      "AH346TQ",
+      "OZU678",
+    ],
+  },
 
-    // Si ya es exactamente el único email, no tocar
-    if (current.length === 1 && current[0] === TARGET_EMAIL) {
-      continue;
-    }
+  RDLS: {
+    operacion: "RDLS",
+    emails: [
+      "guillermo.ulrich@maximia.com.ar",
+      "sebastian.ruiz@maximia.com.ar",
+      "sebastian.soto@maximia.com.ar",
+    ],
+    plates: [
+      "AD374LK",
+      "AG572HF",
+      "AG530IZ",
+      "AH170PH",
+      "AG676NJ",
+      "AG628GV",
+      "AG156YA",
+    ],
+  },
 
-    updates++;
+  LOS_TOLDOS: {
+    operacion: "LOS_TOLDOS",
+    emails: [
+      "sebastian.soto@maximia.com.ar",
+      "guillermo.ulrich@maximia.com.ar",
+      "pablo.quinteros@maximia.com.ar",
+    ],
+    plates: [
+      "AG448OQ",
+      "AG338XF",
+    ],
+  },
 
-    console.log("→", plate);
-    console.log("   Responsables actuales:", current);
-    console.log("   Nuevo responsable:", TARGET_EMAIL);
+  TRATAYEN: {
+    operacion: "TRATAYEN",
+    emails: [
+      "juan.ceballos@maximia.com.ar",
+      "claudio.visceglie@maximia.com.ar",
+    ],
+    plates: [
+      "AG572HB",
+      "AG338XD",
+      "AG572HA",
+    ],
+  },
 
-    if (!DRY_RUN) {
-      await doc.ref.update({
-        responsables: [TARGET_EMAIL],
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
-  }
+  UBA: {
+    operacion: "UBA",
+    emails: [
+      "francisco.berrondo@maximia.com.ar",
+    ],
+    plates: [
+      "AF999DS",
+    ],
+  },
 
-  console.log("--------------------------------------");
-  console.log("Total vehículos modificados:", updates);
-  console.log("Finalizado.");
+  YPF_ANELO: {
+    operacion: "YPF_ANELO",
+    emails: [
+      "mariano.metelsky@maximia.com.ar",
+      "gonzalo.lorca@maximia.com.ar",
+      "claudio.visceglie@maximia.com.ar",
+    ],
+    plates: [
+      "AG743LO",
+    ],
+  },
+
+  GUEMES: {
+    operacion: "GUEMES",
+    emails: [
+      "sebastian.soto@maximia.com.ar",
+      "carina.vega@maximia.com.ar",
+    ],
+    plates: [
+      "AF999EF",
+      "AF999DU",
+    ],
+  },
+
+  MOV_QUINTEROS: {
+    operacion: "MOV_QUINTEROS",
+    emails: [
+      "pablo.quinteros@maximia.com.ar",
+    ],
+    plates: [
+      "AG989PM",
+    ],
+  },
+
+};
+
+
+// ==============================
+// UTILIDADES
+// ==============================
+
+function normalizePlate(plate) {
+  return String(plate || "").trim().toUpperCase();
 }
 
-run().catch(console.error);
+// ==============================
+// CONSTRUIR MAPA DE PATENTES
+// ==============================
+
+function buildPlateConfig(groups) {
+  const result = {};
+
+  Object.values(groups).forEach((group) => {
+    group.plates.forEach((plate) => {
+
+      const p = normalizePlate(plate);
+
+      result[p] = {
+        operacion: group.operacion,
+        emails: group.emails,
+      };
+
+    });
+  });
+
+  return result;
+}
+
+const plateConfig = buildPlateConfig(GROUPS);
+
+
+// ==============================
+// SCRIPT PRINCIPAL
+// ==============================
+
+async function main() {
+
+  const serviceAccount = require(SERVICE_ACCOUNT_PATH);
+
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+  }
+
+  const db = admin.firestore();
+
+  const snapshot = await db.collection(DOC_PATH_PREFIX).get();
+
+  const batch = db.batch();
+
+  snapshot.docs.forEach((doc) => {
+
+    const plate = normalizePlate(doc.id);
+
+    const config = plateConfig[plate];
+
+    let emails;
+    let operacion;
+
+    if (config) {
+      emails = normalizeEmailArray(config.emails);
+      operacion = config.operacion;
+    } else {
+      emails = normalizeEmailArray([DEFAULT_EMAIL]);
+      operacion = "SIN_ASIGNAR";
+      console.log("⚠ Patente sin configuración:", plate);
+    }
+
+    const ref = db.doc(`${DOC_PATH_PREFIX}/${plate}`);
+
+    batch.set(
+      ref,
+      {
+        responsables: emails,
+        responsablesNormalized: emails,
+        operacion: operacion,
+      },
+      { merge: true }
+    );
+
+  });
+
+  await batch.commit();
+
+  console.log("Script finalizado correctamente");
+
+}
+
+main().catch((err) => {
+  console.error("ERROR:", err);
+  process.exit(1);
+});

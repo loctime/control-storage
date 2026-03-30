@@ -285,15 +285,10 @@ async function syncAccessUsers() {
       if (!existing.email) {
         update.email = email;
       }
-      if (existing.active == null && existing.enabled == null) {
+      // Siempre reactivar si está en la lista activa
+      if (existing.active !== true || existing.enabled !== true) {
         update.active = true;
         update.enabled = true;
-      } else if (existing.active == null && existing.enabled != null) {
-        update.active = existing.enabled === true;
-      } else if (existing.enabled == null && existing.active != null) {
-        update.enabled = existing.active === true;
-      } else if (existing.active != null && existing.enabled != null && (existing.active === true) !== (existing.enabled === true)) {
-        update.enabled = existing.active === true;
       }
 
       // No sobreescribimos role si ya existe; si esta vacio, usamos el candidato si hay.
