@@ -56,6 +56,7 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const dashboardSummaryRoutes = require('./routes/dashboard');
 const logisticsV2Routes = require('./modules/logistics/logistics.routes');
 const trainingRoutes = require('./modules/training/training.routes');
+const controlInjectRoutes = require('./routes/apps/controlinject');
 const { getCacheStats, clearCache } = require('./middleware/cache');
 const { logger } = require('./utils/logger');
 const requestLogger = require('./middleware/request-logger');
@@ -268,6 +269,8 @@ app.use('/api/dashboard', authMiddleware, dashboardSummaryRoutes);
 app.use('/api/logistics/v2', authMiddleware, logisticsV2Routes);
 app.use('/api/training', authMiddleware, trainingRoutes);
 app.use('/v1/training', authMiddleware, trainingRoutes);
+app.use('/api/apps/controlinject', authMiddleware, controlInjectRoutes);
+app.use('/v1/apps/controlinject', authMiddleware, controlInjectRoutes);
 
 // Superdev routes - EXCLUSIVO para usuarios con role === 'superdev'
 app.use('/api/superdev', superdevAuthMiddleware, superdevRoutes);
