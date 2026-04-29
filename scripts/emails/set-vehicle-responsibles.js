@@ -1,10 +1,11 @@
 const admin = require("firebase-admin");
 const path = require("path");
-const { normalizeEmailArray } = require("../../src/shared/normalizeEmail");
 
 const SERVICE_ACCOUNT_PATH = path.join(process.cwd(), "serviceAccountKey-controlfile.json");
 
 const DOC_PATH_PREFIX = "apps/emails/vehicles";
+const RESPONSABLE_FIELD = "responsables";
+const OPERACION_FIELD = "operacion";
 
 const DEFAULT_EMAIL = "hys@maximia.com.ar";
 
@@ -202,6 +203,17 @@ function normalizePlate(plate) {
   return String(plate || "").trim().toUpperCase();
 }
 
+function normalizeEmails(emails) {
+  return Array.from(
+    new Set(
+      (emails || [])
+        .map((e) => String(e || "").trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+}
+
+
 // ==============================
 // CONSTRUIR MAPA DE PATENTES
 // ==============================
@@ -258,10 +270,10 @@ async function main() {
     let operacion;
 
     if (config) {
-      emails = normalizeEmailArray(config.emails);
+      emails = normalizeEmails(config.emails);
       operacion = config.operacion;
     } else {
-      emails = normalizeEmailArray([DEFAULT_EMAIL]);
+      emails = normalizeEmails([DEFAULT_EMAIL]);
       operacion = "SIN_ASIGNAR";
       console.log("⚠ Patente sin configuración:", plate);
     }
