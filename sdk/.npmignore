@@ -1,0 +1,9 @@
+node_modules
+test
+scripts
+docs
+src
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+.npmignore
