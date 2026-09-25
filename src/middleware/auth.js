@@ -26,6 +26,7 @@ function parseServiceAccount(envVarName) {
 }
 
 let centralAuth;
+let controlAuditAuth = null;
 
 // App de Auth central (opcional): si FB_ADMIN_IDENTITY está definido, usa una app nombrada 'authApp'
 try {
@@ -41,6 +42,36 @@ try {
 } catch (e) {
   console.error('Error inicializando App de identidad:', e);
   throw e;
+}
+
+// ControlAudit usa su propio proyecto Firebase. La capa de archivos sigue
+// viviendo en ControlFile, por lo que valida ambos emisores explícitamente.
+try {
+  if (process.env.CONTROLAUDIT_FIREBASE_SERVICE_ACCOUNT) {
+    const auditCred = parseServiceAccount('CONTROLAUDIT_FIREBASE_SERVICE_ACCOUNT');
+    const auditApp = admin.apps.find((app) => app.name === 'controlAuditAuth') || admin.initializeApp({
+      credential: admin.credential.cert(auditCred),
+      projectId: auditCred.project_id || auditCred.projectId,
+    }, 'controlAuditAuth');
+    controlAuditAuth = auditApp.auth();
+  }
+} catch (e) {
+  console.error('Error inicializando Auth de ControlAudit:', e);
+  throw e;
+}
+
+async function verifySupportedToken(token) {
+  try {
+    return await centralAuth.verifyIdToken(token);
+  } catch (centralError) {
+    if (!controlAuditAuth) throw centralError;
+
+    const decoded = await controlAuditAuth.verifyIdToken(token);
+    if (decoded.appId !== 'auditoria') {
+      throw new Error('Token de ControlAudit sin appId válido');
+    }
+    return decoded;
+  }
 }
 
 // APP_CODE eliminado - ya no es necesario
@@ -85,7 +116,7 @@ module.exports = async (req, res, next) => {
       });
     }
 
-    const decoded = await centralAuth.verifyIdToken(token);
+    const decoded = await verifySupportedToken(token);
 
     if (!decoded || !decoded.uid) {
       return res.status(401).json({ error: 'Token de usuario inválido', code: 'AUTH_UID_MISSING' });
